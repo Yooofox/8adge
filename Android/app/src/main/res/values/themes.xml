@@ -1,0 +1,14 @@
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <!-- Pure White Flat Application Theme -->
+    <style name="Base.Theme.EightBadge" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="colorPrimary">@color/flat_primary</item>
+        <item name="colorOnPrimary">@color/flat_on_primary</item>
+        <item name="colorPrimaryContainer">@color/flat_primary_container</item>
+        <item name="colorOnPrimaryContainer">@color/flat_on_primary_container</item>
+        <item name="colorSurface">#FFFFFF</item>
+        <item name="colorSurfaceContainerLowest">#FFFFFF</item>
+        <item name="colorSurfaceContainerHigh">#F8F9FA</item>
+    </style>
+
+    <style name="Theme.EightBadge" parent="Base.Theme.EightBadge" />
+</resources>

@@ -1,0 +1,30 @@
+# ---------------------------------------------------------------- Android
+.gradle/
+build/
+local.properties
+.kotlin/
+captures/
+.externalNativeBuild/
+.cxx/
+*.apk
+*.aab
+*.hprof
+
+# ---------------------------------------------------------------- PlatformIO
+.pio/
+
+# ------------------------------------------------------------ IDE / editors
+.idea/
+.vscode/
+*.iml
+
+# ------------------------------------------------- third-party flashing tool
+# Espressif Flash Download Tool: vendor executable, download logs and scratch
+# dirs. Not part of the sources - flashing is documented in README.md.
+flash_download_tool/
+
+# ---------------------------------------------------------------- OS / editor
+.DS_Store
+Thumbs.db
+*~
+*.swp

@@ -1,0 +1,234 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:background="?attr/colorSurfaceContainerHigh"
+    android:orientation="vertical"
+    android:padding="16dp">
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="实时日志与系统测试"
+        android:textColor="?attr/colorOnSurface"
+        android:textSize="18sp"
+        android:textStyle="bold" />
+
+    <!-- Log Terminal Console -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="260dp"
+        android:layout_marginTop="12dp"
+        android:background="#121212"
+        android:orientation="vertical"
+        android:padding="8dp">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:fontFamily="monospace"
+                android:singleLine="true"
+                android:ellipsize="end"
+                android:text="> BLE Terminal Output"
+                android:textColor="#00E676"
+                android:textSize="12sp"
+                android:textStyle="bold" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/dialogBtnCopyLogs"
+                style="@style/Widget.Material3.Button.TextButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:minWidth="0dp"
+                android:minHeight="0dp"
+                app:minTouchTargetSize="0dp"
+                android:insetTop="0dp"
+                android:insetBottom="0dp"
+                android:paddingHorizontal="6dp"
+                android:paddingVertical="4dp"
+                android:text="复制"
+                android:textColor="#81D4FA"
+                android:textSize="11sp" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/dialogBtnExportLogs"
+                style="@style/Widget.Material3.Button.TextButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:minWidth="0dp"
+                android:minHeight="0dp"
+                app:minTouchTargetSize="0dp"
+                android:insetTop="0dp"
+                android:insetBottom="0dp"
+                android:paddingHorizontal="6dp"
+                android:paddingVertical="4dp"
+                android:text="导出/分享"
+                android:textColor="#FFB74D"
+                android:textSize="11sp" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/dialogBtnClearLogs"
+                style="@style/Widget.Material3.Button.TextButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:minWidth="0dp"
+                android:minHeight="0dp"
+                app:minTouchTargetSize="0dp"
+                android:insetTop="0dp"
+                android:insetBottom="0dp"
+                android:paddingHorizontal="6dp"
+                android:paddingVertical="4dp"
+                android:text="清空"
+                android:textColor="#AAAAAA"
+                android:textSize="11sp" />
+
+        </LinearLayout>
+
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/dialogRecyclerLogs"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_marginTop="4dp"
+            android:layout_weight="1"
+            android:scrollbars="vertical"
+            android:fadeScrollbars="false"
+            tools:listitem="@layout/item_console_log" />
+
+    </LinearLayout>
+
+    <!-- Device Specs & Commands Section -->
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:text="设备指令测试"
+        android:textColor="?attr/colorOnSurface"
+        android:textSize="14sp"
+        android:textStyle="bold" />
+
+    <HorizontalScrollView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp">
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/dialogBtnGetInfo"
+                style="@style/Widget.Material3.Button.OutlinedButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="8dp"
+                android:text="读设备信息" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/dialogBtnShowHint"
+                style="@style/Widget.Material3.Button.OutlinedButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="8dp"
+                android:text="绘制提示屏" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/dialogBtnPing"
+                style="@style/Widget.Material3.Button.OutlinedButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="8dp"
+                android:text="Ping 测试" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/dialogBtnDisconnect"
+                style="@style/Widget.Material3.Button.TextButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="断开连接"
+                android:textColor="?attr/colorError" />
+
+        </LinearLayout>
+    </HorizontalScrollView>
+
+    <!-- Test Pattern Generators Section -->
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:text="生成测试图例"
+        android:textColor="?attr/colorOnSurface"
+        android:textSize="14sp"
+        android:textStyle="bold" />
+
+    <HorizontalScrollView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp">
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/dialogBtnTestYellowRed"
+                style="@style/Widget.Material3.Button.OutlinedButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="8dp"
+                android:text="左黄右红测试图" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/dialogBtnTestGrid"
+                style="@style/Widget.Material3.Button.OutlinedButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="8dp"
+                android:text="四色棋盘格" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/dialogBtnTestWhite"
+                style="@style/Widget.Material3.Button.OutlinedButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="8dp"
+                android:text="全白测试图" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/dialogBtnTestBlack"
+                style="@style/Widget.Material3.Button.OutlinedButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="8dp"
+                android:text="全黑测试图" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/dialogBtnTestRainbow"
+                style="@style/Widget.Material3.Button.OutlinedButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="彩虹渐变图" />
+
+        </LinearLayout>
+    </HorizontalScrollView>
+
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/dialogBtnCloseTest"
+        style="@style/Widget.Material3.Button.TextButton"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="end"
+        android:layout_marginTop="8dp"
+        android:text="关闭" />
+
+</LinearLayout>

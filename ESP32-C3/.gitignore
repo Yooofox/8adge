@@ -1,0 +1,12 @@
+# PlatformIO
+.pio
+
+# IDE
+.vscode/
+
+# macOS
+.DS_Store
+
+# tools/preview_hint_screen.py output - a local sanity check, not a source file
+hint_screen_preview.png
+preview/

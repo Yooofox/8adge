@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:background="?attr/colorSurfaceContainerHigh"
+    android:orientation="vertical"
+    android:padding="16dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="搜索附近 8adge 墨水屏"
+            android:textColor="?attr/colorOnSurface"
+            android:textSize="18sp"
+            android:textStyle="bold" />
+
+        <com.google.android.material.progressindicator.CircularProgressIndicator
+            android:id="@+id/dialogSearchProgress"
+            android:layout_width="24dp"
+            android:layout_height="24dp"
+            android:indeterminate="true"
+            app:indicatorSize="24dp"
+            app:trackThickness="3dp" />
+
+    </LinearLayout>
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="2dp"
+        android:text="按信号强度 (RSSI) 由强到弱实时排序"
+        android:textColor="?attr/colorOnSurfaceVariant"
+        android:textSize="12sp" />
+
+    <!-- Scanned Devices RecyclerView -->
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/dialogRecyclerDevices"
+        android:layout_width="match_parent"
+        android:layout_height="280dp"
+        android:layout_marginTop="12dp"
+        tools:listitem="@layout/item_ble_device" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:gravity="end"
+        android:orientation="horizontal">
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/dialogBtnRescan"
+            style="@style/Widget.Material3.Button.OutlinedButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="重新搜索" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/dialogBtnCloseSearch"
+            style="@style/Widget.Material3.Button.TextButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:text="关闭" />
+
+    </LinearLayout>
+
+</LinearLayout>

@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="black">#FF000000</color>
+    <color name="white">#FFFFFFFF</color>
+
+    <!-- Pure White Flat Light Theme Palette -->
+    <color name="flat_primary">#111111</color>
+    <color name="flat_on_primary">#FFFFFF</color>
+    <color name="flat_primary_container">#F2F4F7</color>
+    <color name="flat_on_primary_container">#101828</color>
+
+    <!-- Pure White Flat Dark Theme Palette -->
+    <color name="flat_primary_dark">#FFFFFF</color>
+    <color name="flat_on_primary_dark">#111111</color>
+    <color name="flat_primary_container_dark">#1D2939</color>
+    <color name="flat_on_primary_container_dark">#F2F4F7</color>
+</resources>
