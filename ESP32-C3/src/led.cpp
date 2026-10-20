@@ -5,11 +5,11 @@
 
 #include "config.h"
 
-// Onboard blue LED, ACTIVE LOW (see config.h). Every write goes through these
-// two macros so the polarity lives in exactly one place, and both compile to
-// nothing when PIN_LED < 0 - ledFeedback() writes the pin directly, so gating
-// only ledApplyPin() would have left a config knob that does not do what its
-// comment says.
+// 板载蓝色 LED，低电平有效（见 config.h）。每次写引脚都走这两个
+// 宏，这样极性只存在于一处；而且当 PIN_LED < 0 时两者都编译成
+// 空操作 - ledFeedback() 会直接写引脚，所以只给
+// ledApplyPin() 加门控会留下一个行为与其注释不符的
+// 配置开关。
 #if PIN_LED >= 0
 #define LED_ON()   digitalWrite(PIN_LED, PIN_LED_ACTIVE_LOW ? LOW : HIGH)
 #define LED_OFF()  digitalWrite(PIN_LED, PIN_LED_ACTIVE_LOW ? HIGH : LOW)
@@ -20,8 +20,8 @@
 
 namespace {
 
-// Half periods. Fast is a "something is wrong" stutter, slow is a calm
-// "working" pulse that stays readable while the panel refreshes for 25 s.
+// 半周期。快闪是“出问题了”的急促抖动，慢闪是沉稳的
+// “正在工作”脉动，在面板刷新 25 s 期间也依然清晰可辨。
 constexpr unsigned long FAST_HALF_MS = 100;   // ~5 Hz
 constexpr unsigned long SLOW_HALF_MS = 600;   // ~0.8 Hz
 
@@ -45,8 +45,8 @@ unsigned long ledHalfPeriod(LedMode mode) {
     }
 }
 
-// Move the steady state and put the pin in a deterministic phase: Solid/Off
-// settle immediately, a blink starts lit so the transition is visible at once.
+// 改变稳态，并让引脚处于确定的相位：Solid/Off
+// 立即稳定，闪烁则从点亮开始，这样状态切换立刻可见。
 void ledApplyMode(LedMode mode, bool restartPhase) {
     g_mode = mode;
     g_lit = (mode != LedMode::Off);
@@ -64,7 +64,7 @@ void ledInit() {
 #endif
     g_mode = LedMode::Off;
     g_lit = false;
-    LED_OFF();   // GPIO8 is a strapping pin: park it OFF, never ON
+    LED_OFF();   // GPIO8 是 strapping 引脚：让它停在 OFF，绝不 ON
 }
 
 void ledSetMode(LedMode mode) {
@@ -78,7 +78,7 @@ LedMode ledMode() {
 
 void ledTick() {
     unsigned long half = ledHalfPeriod(g_mode);
-    if (half == 0) return;   // Off / Solid need no work
+    if (half == 0) return;   // Off / Solid 不需要做任何事
     unsigned long now = millis();
     if (now - g_lastToggleAt < half) return;
     g_lastToggleAt = now;
@@ -90,9 +90,9 @@ void ledDelay(unsigned long ms) {
     unsigned long startedAt = millis();
     while (millis() - startedAt < ms) {
         ledTick();
-        // The panel refresh blocks the loop for 15-25 s through this helper.
-        // delay() yields to FreeRTOS, which is what keeps the BLE host task and
-        // its connection alive while the screen is being painted.
+        // 面板刷新会通过这个助手阻塞 loop 15-25 s。
+                // delay() 会让出 FreeRTOS，而正是这一点让 BLE host 任务及其
+                // 连接在刷屏期间保持存活。
         delay(5);
     }
     ledTick();
@@ -109,20 +109,20 @@ void ledFeedback(const char *pattern) {
             LED_OFF(); delay(80);
         }
     } else if (strcmp(pattern, "waiting") == 0) {
-        // Advertising and no phone connected yet: a calm, unmissable pulse.
+        // 正在广播且还没有手机连接：一段沉稳、不易忽略的脉动。
         next = LedMode::SlowBlink;
     } else if (strcmp(pattern, "off") == 0) {
         next = LedMode::Off;
     } else {
-        // Unknown pattern: leave the LED alone. The three above are the only
-        // ones this firmware uses; the "connecting"/"success"/"fail" family the
-        // header used to list came from the WiFi build and had no call site
-        // left, so it was removed rather than kept as documentation that
-        // describes nothing.
+        // 未知模式：保持 LED 不变。上面三种是本固件
+                // 唯一使用的；头文件过去列出的 "connecting"/"success"/"fail"
+                // 系列来自 WiFi 构建，已经没有调用点，
+                // 所以直接删除，而不是留作描述不了任何东西的
+                // 文档。
         return;
     }
 
-    // Re-assert the steady state, restarting the blink phase so the pin never
-    // stays at whatever the last blink left behind.
+    // 重新施加稳态，并重启闪烁相位，这样引脚绝不会
+        // 停留在上一次闪烁留下的电平上。
     ledApplyMode(next, true);
 }

@@ -1,27 +1,29 @@
 #!/usr/bin/env python3
-"""Logic check for the full-refresh cooldown in refresh_guard.cpp.
+"""对 refresh_guard.cpp 中整屏刷新冷却的逻辑检查。
 
-The guard is the one piece of firmware whose failure can damage the panel, and
-it cannot be exercised without a real e-paper panel, NVS and 180 seconds of
-wall time. This script transcribes the state machine (clock anchoring, the
-cumulative forward-jump clamp, the uptime fallback, the confirmation grant and
-the forced-refresh floor) with a fake millis() and checks the cases that matter:
+这个守卫是固件中唯一一处一旦失效就可能损坏面板的部分，而它离开真实的
+墨水屏、NVS 和 180 秒的墙上时间就无法被检验。本脚本用一个假的 millis()
+转写了这套状态机（时钟锚定、累积的前跳钳位、uptime 回退、确认授权），
+并检查那些真正要紧的情形：
 
-  1. a fresh device is not blocked;
-  2. a dated record from a previous boot is judged by uptime until a clock
-     arrives;
-  3. with an exact clock the interval is exact (179 s blocked / 180 s allowed);
-  4. a clock that is behind the record falls back to uptime instead of blocking
-     forever, and rewrites the record so the device self-heals;
-  5. repeated SYNC_TIME frames cannot fast-forward the clock beyond real uptime;
-  6. a confirmation cannot force a refresh less than 60 s after the last one,
-     and a second forced refresh needs the full 180 s;
-  7. a grant only authorises the command it was issued for;
-  8. a corrupt NVS record is treated as UNDATED, never as "no refresh ever";
-  9. a legacy 12-byte v1 record still loads;
- 10. a normal paint does not cancel an unrelated grant.
+  1. 全新的设备不会被拦；
+  2. 上次启动留下的带时间戳记录，在拿到时钟之前按 uptime 判断；
+  3. 时钟精确时区间就精确（179 s 被拦 / 180 s 放行）；
+  4. 落后于记录的时钟退回按 uptime 判断，而不是永远拦下去，
+     并且会重写记录，从而让设备自愈；
+  5. 重复的 SYNC_TIME 帧不能把时钟快进到超过真实 uptime；
+  6. 用户确认后就一定放行：token 有效且未过期时不再检查距上次刷新多久
+     （v1.3.2 起；旧版会在 60 s / 180 s 的下限内拒绝，确认框因此看起来无效），
+     没有时钟时同样放行；
+  7. 授权只对它被签发时对应的那条命令有效；
+    8. 一次普通的绘制不会取消一个不相关的授权；
+    9. 损坏的 NVS 记录被当作 UNDATED，绝不会当成“从未刷新过”；
+   10. 旧的 12 字节 v1 记录仍能加载；
+   11. 长时间断电但时钟正确时，一旦时钟已知就立即放行；
+   12. 令牌本身仍受检查（v1.3.2）：未签发的 token、已消费的 token 以及
+       超过 120 秒（GRANT_MS）的 token 一律拒绝。
 
-Keep this in sync with src/refresh_guard.cpp. Run from anywhere:
+本文件要与 src/refresh_guard.cpp 保持同步。从任意位置运行：
 
     python tools/check_refresh_guard.py
 """
@@ -33,12 +35,11 @@ import sys
 MIN_GAP_S = 180
 MIN_GAP_MS = 180_000
 GRANT_MS = 120_000
-FORCED_MIN_GAP_MS = 60_000
 SKEW_S = 30
 CLOCK_MIN_UTC = 1_000_000_000
 CLOCK_MAX_UTC = 4_102_444_800
 
-# A plausible UTC second (2023-11-14T22:13:20Z).
+# 一个合理的 UTC 秒数（2023-11-14T22:13:20Z）。
 T0 = 1_700_000_000
 
 OP_BEGIN = 0x02
@@ -55,7 +56,7 @@ def check(ok: bool, label: str) -> None:
 
 
 class Guard:
-    """Mirror of the anonymous-namespace state in refresh_guard.cpp."""
+    """refresh_guard.cpp 中匿名命名空间状态的镜像。"""
 
     def __init__(self, now: int = 0) -> None:
         self.now = now
@@ -78,11 +79,11 @@ class Guard:
         self.grant_at = 0
         self.grant_op = 0
 
-    # -- time ---------------------------------------------------------
+    # -- 时间 ---------------------------------------------------------
     def advance(self, ms: int) -> None:
         self.now += ms
 
-    # -- NVS record ---------------------------------------------------
+    # -- NVS 记录 ---------------------------------------------------
     def load(self, kind: str, state: str = "", utc: int = 0, flags: int = 0) -> None:
         if kind == "none":
             return
@@ -99,11 +100,11 @@ class Guard:
             self.have = True
             self.has_wall = False
         else:
-            # Unknown state or a dated record without a timestamp.
+            # 状态未知，或者是一条带日期却没有时间戳的记录。
             self.have = True
             self.has_wall = False
 
-    # -- clock --------------------------------------------------------
+    # -- 时钟 --------------------------------------------------------
     def now_utc(self) -> int:
         if not self.clock_known:
             return 0
@@ -125,7 +126,7 @@ class Guard:
         self.clock_known = True
         return True
 
-    # -- rule ---------------------------------------------------------
+    # -- 规则 --------------------------------------------------------
     def wall_usable(self) -> bool:
         return self.clock_known and self.has_wall and self.now_utc() >= self.last_utc
 
@@ -147,7 +148,7 @@ class Guard:
             return 0
         return (MIN_GAP_MS - gone + 999) // 1000
 
-    # -- confirmation -------------------------------------------------
+    # -- 确认 -------------------------------------------------
     def issue(self, op: int) -> int:
         self.pending = (self.pending + 1) & 0xFF
         if self.pending == 0:
@@ -164,19 +165,6 @@ class Guard:
         if self.now - self.pending_at >= GRANT_MS:
             self.pending = 0
             return False
-        if self.have:
-            # Same yardstick as the cooldown: the exact interval when a clock is
-            # usable, the uptime lower bound otherwise.
-            limit_s = MIN_GAP_S if self.forced else FORCED_MIN_GAP_MS // 1000
-            if self.wall_usable():
-                if self.now_utc() - self.last_utc < limit_s:
-                    self.pending = 0
-                    return False
-            else:
-                limit_ms = MIN_GAP_MS if self.forced else FORCED_MIN_GAP_MS
-                if self.now - self.ref_uptime < limit_ms:
-                    self.pending = 0
-                    return False
         self.grant = token
         self.grant_at = self.now
         self.grant_op = self.pending_op
@@ -213,12 +201,12 @@ class Guard:
 
 
 def main() -> int:
-    # 1. fresh device -------------------------------------------------
+    # 1. 全新的设备 -------------------------------------------------
     g = Guard()
     check(g.allowed(), "fresh device: cooldown not applicable")
     check(g.may(OP_BEGIN), "fresh device: BEGIN allowed")
 
-    # 2. dated record, no clock yet -----------------------------------
+    # 2. 带日期的记录，尚无时钟 -----------------------------------
     g = Guard()
     g.load("record", "dated", T0)
     g.advance(179_000)
@@ -228,7 +216,7 @@ def main() -> int:
     check(g.allowed() and g.wait_s() == 0,
           "dated record without a clock: 180 s uptime -> allowed")
 
-    # 3. exact clock --------------------------------------------------
+    # 3. 精确的时钟 --------------------------------------------------
     g = Guard()
     g.load("record", "dated", T0)
     check(g.sync(T0), "exact clock accepted")
@@ -237,7 +225,7 @@ def main() -> int:
     g.advance(1_000)
     check(g.allowed(), "exact clock: 180 s -> allowed")
 
-    # 4. clock behind the record -> uptime fallback, then self-heal ---
+    # 4. 时钟落后于记录 -> 回退到 uptime，然后自愈 -------------------
     g = Guard()
     g.load("record", "dated", T0)
     check(g.sync(T0 - 3_600), "clock behind the record is still adopted")
@@ -250,41 +238,37 @@ def main() -> int:
     check(g.has_wall and g.last_utc != 0,
           "clock behind: the refresh rewrites the record so the device heals")
 
-    # 5. cumulative forward-jump clamp --------------------------------
+    # 5. 累积的前跳钳位 ------------------------------------------------
     g = Guard()
     g.load("record", "dated", T0)
     check(g.sync(T0), "first sync accepted")
-    g.advance(1_000_000)          # 1000 s of real uptime
+    g.advance(1_000_000)          # 1000 s 的真实 uptime
     check(g.sync(T0 + 1_000), "sync after real uptime accepted")
     check(not g.sync(T0 + 2_000), "second sync 1000 s ahead rejected")
     g.advance(1_000_000)
     check(g.sync(T0 + 2_000), "same value accepted after another 1000 s uptime")
 
-    # 6. confirmation floor and forced-refresh floor ------------------
+    # 6. 用户确认后一定放行（不再有时间下限） ------------------------
     g = Guard()
-    g.note(OP_BEGIN)                       # first refresh at uptime 0
+    g.note(OP_BEGIN)                       # 第一次刷新在 uptime 0
     g.advance(180_000)
-    g.note(OP_BEGIN)                       # normal refresh at 180 s
-    g.advance(10_000)                      # 10 s since the last refresh
+    g.note(OP_BEGIN)                       # 在 180 s 处的一次普通刷新
+    g.advance(10_000)                      # 距上次刷新 10 s
+    check(not g.allowed(), 'confirm: 10 s after a refresh is inside the cooldown')
     tok = g.issue(OP_BEGIN)
-    check(not g.arm(tok), "confirm refused 10 s after a normal refresh")
-    g.advance(50_000)                      # 60 s since the last refresh
+    check(g.arm(tok) and g.may(OP_BEGIN), 'confirm is honoured 10 s after a refresh')
+    g.note(OP_BEGIN)                       # 这次绘制是被确认强制的
+    check(g.forced, 'the paint is recorded as forced')
+    g.advance(5_000)                       # 距强刷只有 5 s
     tok = g.issue(OP_BEGIN)
-    check(g.arm(tok) and g.may(OP_BEGIN), "confirm accepted at 60 s")
-    g.note(OP_BEGIN)                       # this paint is forced
-    check(g.forced, "the paint is recorded as forced")
-    g.advance(60_000)                      # 60 s after a forced refresh
-    tok = g.issue(OP_BEGIN)
-    check(not g.arm(tok), "a second forced refresh is refused at 60 s")
-    g.advance(120_000)                     # 180 s after the forced refresh
-    tok = g.issue(OP_BEGIN)
-    check(g.arm(tok), "a second forced refresh is accepted at 180 s")
+    check(g.arm(tok) and g.may(OP_BEGIN),
+          'a second forced refresh is honoured 5 s after a forced one')
 
-    # 7. grant is bound to the refused opcode -------------------------
+    # 7. 授权与被拒绝的那条 opcode 绑定 ------------------------------
     g = Guard()
     g.load("record", "dated", T0)
     g.advance(60_000)
-    g.sync(T0 + 60)                        # blocked (60 s < 180 s)
+    g.sync(T0 + 60)                        # 被拦（60 s < 180 s）
     check(not g.allowed(), "opcode binding: still inside the cooldown")
     tok = g.issue(OP_HINT)
     check(g.arm(tok), "opcode binding: SHOW_HINT grant armed")
@@ -292,13 +276,13 @@ def main() -> int:
     check(not g.may(OP_BEGIN), "opcode binding: grant does not admit BEGIN")
     check(not g.may(0), "opcode binding: grant does not admit an automatic hint")
 
-    # 8. an unrelated paint must not consume the grant ----------------
-    g.note(OP_BEGIN)                       # image paint, admitted by cooldown? no
-    # note() was called without a BEGIN grant; the SHOW_HINT grant must survive.
+    # 8. 一次不相关的绘制不得消耗掉授权 ------------------------------
+    g.note(OP_BEGIN)                       # 图像绘制，冷却会放行吗？不会
+        # note() 是在没有 BEGIN 授权的情况下调用的；SHOW_HINT 的授权必须保留。
     check(g.grant != 0 and g.may(OP_HINT),
           "an unrelated paint leaves the SHOW_HINT grant armed")
 
-    # 9. corrupt record is conservative -------------------------------
+    # 9. 损坏的记录被保守处理 ---------------------------------------
     g = Guard()
     g.load("corrupt")
     g.advance(179_000)
@@ -306,9 +290,9 @@ def main() -> int:
     g.advance(1_000)
     check(g.allowed(), "corrupt record: 180 s uptime -> allowed")
 
-    # 10. legacy 12-byte record ---------------------------------------
+    # 10. 旧的 12 字节记录 --------------------------------------------
     g = Guard()
-    g.load("record", "dated", T0, flags=0)   # same fields, no flags byte
+    g.load("record", "dated", T0, flags=0)   # 字段相同，但没有 flags 字节
     g.sync(T0)
     check(g.has_wall and g.last_utc == T0,
           "legacy record: parsed and judged by its timestamp")
@@ -317,50 +301,35 @@ def main() -> int:
     check(g.allowed(), "legacy record: 180 s elapsed -> allowed")
     check(not g.forced, "legacy record: forced flag defaults to false")
 
-    # 11. long power-off with a correct clock -------------------------
+    # 11. 时钟正确情况下的长时间断电 ---------------------------------
     g = Guard()
     g.load("record", "dated", T0)
     g.advance(4 * 3600 * 1000)
     check(g.sync(T0 + 4 * 3600) and g.allowed(),
           "4 h power-off: allowed immediately once the clock is known")
 
-    # 12. the confirmation floor uses the real interval once a clock exists
-    #     (v1.3.1). A device that was unplugged for a while must not have to
-    #     serve 60 s of uptime before the user may confirm, while a genuinely
-    #     recent refresh must still be refused.
+    # 12. 令牌本身仍然被检查（v1.3.2） --------------------------------
     g = Guard()
-    g.load("record", "dated", T0)          # last refresh before this boot
-    g.advance(5_000)                       # 5 s of uptime
-    g.sync(T0 + 100)                       # ... but 100 s of real time
-    check(not g.allowed(), "wall floor: a 100 s real interval is still inside 180 s")
-    tok = g.issue(OP_BEGIN)
-    check(g.arm(tok), "wall floor: 100 s real interval clears the 60 s floor "
-                      "even though uptime is only 5 s")
-
-    g = Guard()
-    g.load("record", "dated", T0)
+    g.load('record', 'dated', T0)
+    g.sync(T0)
     g.advance(5_000)
-    g.sync(T0 + 30)                        # 30 s of real time
     tok = g.issue(OP_BEGIN)
-    check(not g.arm(tok), "wall floor: a 30 s real interval is still refused")
+    check(not g.arm(tok + 1), 'a token that was never issued is refused')
+    check(g.arm(tok), 'the live token is still armable after a rejected guess')
+    check(not g.arm(tok), 'a consumed token cannot be replayed')
+    tok = g.issue(OP_BEGIN)
+    g.advance(GRANT_MS)
+    check(not g.arm(tok), 'a token older than GRANT_MS is refused')
+    tok = g.issue(OP_BEGIN)
+    g.advance(GRANT_MS // 2)
+    check(g.arm(tok), 'a token inside GRANT_MS is accepted')
 
     g = Guard()
-    g.load("record", "undated")            # no timestamp -> no wall clock
+    g.load('record', 'undated')            # 没有时间戳 -> 没有墙上时钟
     g.advance(30_000)
+    check(not g.allowed(), 'no clock: 30 s uptime is inside the cooldown')
     tok = g.issue(OP_BEGIN)
-    check(not g.arm(tok), "uptime floor without a clock: 30 s refused")
-    g.advance(30_000)
-    tok = g.issue(OP_BEGIN)
-    check(g.arm(tok), "uptime floor without a clock: 60 s accepted")
-
-    g = Guard()
-    g.load("record", "dated", T0, flags=1)  # last refresh was itself forced
-    g.advance(5_000)
-    g.sync(T0 + 120)                        # real interval 120 s < 180 s
-    tok = g.issue(OP_BEGIN)
-    check(not g.arm(tok),
-          "wall floor: after a forced refresh the full interval is required")
-
+    check(g.arm(tok) and g.may(OP_BEGIN), 'no clock: the confirmation is honoured')
 
     print()
     if FAILURES:

@@ -2,24 +2,23 @@
 #define BADGE8_BLE_GEOMETRY_H
 
 // ============================================================================
-//  Portrait canvas -> panel rotation.
+//  竖版画布 -> 面板旋转。
 //
-//  The panel is a 768x552 *landscape* part, but this device is meant to live in
-//  a portrait photo frame (phones, cameras, picture frames - all portrait). So
-//  everything in this firmware is expressed in one portrait **canvas** of
-//  552 x 768 and rotated onto the panel as the last step:
+//  面板是 768x552 的 *横版* 器件，但本设备要装在竖版相框里（手机、相机、
+//  相框 - 全是竖版）。因此本固件中的所有内容都用一块 552 x 768 的竖版 **画布**
+//  来表达，并在最后一步旋转到面板上：
 //
-//    * the phone packs its image in canvas coordinates (BLE_IMAGE_WIDTH x
-//      BLE_IMAGE_HEIGHT, see ble_protocol.h) and never has to know which way
-//      round the panel's gate driver happens to be wired;
-//    * the hint screen draws its border and text in canvas coordinates too.
+//    * 手机按画布坐标打包它的图像（BLE_IMAGE_WIDTH x
+//      BLE_IMAGE_HEIGHT，见 ble_protocol.h），完全不必知道面板的栅极驱动器
+//      究竟是怎么接线的；
+//    * 提示屏也按画布坐标绘制自己的边框和文字。
 //
-//  Both go through bleSetCanvasPixel(), so one define (BLE_ROTATION in
-//  config.h) flips the whole device, and the on-panel relationship between the
-//  hint screen and a phone image can never drift apart.
+//  两者都经过 bleSetCanvasPixel()，因此一个宏（config.h 中的
+//  BLE_ROTATION）就能翻转整个设备，而提示屏与手机图像在面板上的相对关系
+//  永远不会错位。
 //
-//  The rotation is exact: 552 * 768 == 768 * 552, so the canvas and the panel
-//  hold the same number of pixels and no scaling or cropping is involved.
+//  这个旋转是精确的：552 * 768 == 768 * 552，因此画布与面板持有的像素数
+//  完全一样，不涉及任何缩放或裁剪。
 // ============================================================================
 
 #include <stdint.h>
@@ -29,19 +28,17 @@
 #include "epd_398_4color.h"
 
 #if BLE_ROTATION != 90 && BLE_ROTATION != 270
-// 180 is deliberately NOT offered: rotating a 552x768 canvas by 180 degrees
-// yields another 552x768 bitmap, which cannot be laid over a 768x552 panel -
-// the aspect would have to flip, and the mapping would run off the end of the
-// framebuffer. Portrait on this glass means +/-90 degrees, and 90 vs 270 is
-// exactly the "upright or upside-down" choice.
+// 刻意不提供 180：把 552x768 的画布旋转 180 度得到的仍是 552x768 的位图，
+// 它无法铺到 768x552 的面板上 - 宽高比必须翻转，映射会跑出帧缓冲的末尾。
+// 在这块玻璃上竖版就意味着 +/-90 度，而 90 与 270 恰好就是
+// "正立还是倒立"这个选择。
 #error "BLE_ROTATION must be 90 or 270 (180 cannot map a portrait canvas onto this landscape panel)"
 #endif
 
-// The rotation is a pure permutation, so the canvas and the panel must hold the
-// same number of pixels - and every payload length, block count, retry length
-// and CRC in the protocol is derived from the canvas. Checking it here turns a
-// comment into something the compiler enforces: a stray edit to either geometry
-// would otherwise surface only as a transfer that always fails END_IMAGE.
+// 旋转是一个纯粹的置换，因此画布与面板必须持有相同数量的像素 - 而且协议里
+// 每个载荷长度、块数量、重传长度和 CRC 都源自画布。在这里检查它，就把一条
+// 注释变成了编译器强制执行的东西：否则对任一处几何参数的一笔误改，
+// 只会表现为一次永远在 END_IMAGE 失败的传输。
 static_assert(EPD398_WIDTH * EPD398_HEIGHT == BLE_IMAGE_WIDTH * BLE_IMAGE_HEIGHT,
               "canvas and panel must hold the same number of pixels (rotation is a permutation)");
 static_assert(EPD398_COLOR_BYTES == (BLE_IMAGE_WIDTH * BLE_IMAGE_HEIGHT) / 4,
@@ -49,25 +46,24 @@ static_assert(EPD398_COLOR_BYTES == (BLE_IMAGE_WIDTH * BLE_IMAGE_HEIGHT) / 4,
 static_assert(EPD398_WIDTH == BLE_IMAGE_HEIGHT && EPD398_HEIGHT == BLE_IMAGE_WIDTH,
               "with a +/-90 rotation the panel must be the canvas turned on its side");
 
-// The protocol's block geometry has two ceilings that are easy to break by
-// changing a single constant, and both failures are silent on the wire:
-//   * the smallest accepted block size must not need more blocks than the
-//     END_IMAGE failure bitmap (BLE_MAX_BLOCKS) can hold;
-//   * the BLOCK_CRCS frame carries 4 bytes per block, so even the smallest block
-//     size must still fit the frame format's one-byte length.
-// Rules out, for example, raising the canvas or lowering BLE_BLOCK_SHIFT_MIN
-// without touching BLE_MAX_BLOCKS.
+// 协议的块几何有两处上限，改一个常量就很容易破坏，而两种失败在链路上都是
+// 静默的：
+//   * 可接受的最小块尺寸所需的块数，不能超过 END_IMAGE 失败位图
+//     （BLE_MAX_BLOCKS）能容纳的数量；
+//   * BLOCK_CRCS 帧每块携带 4 字节，因此即使是最小的块尺寸，也必须仍然装得进
+//     帧格式里那个单字节长度。
+// 这样就把例如"不碰 BLE_MAX_BLOCKS 而抬高画布或降低
+// BLE_BLOCK_SHIFT_MIN"排除掉了。
 static_assert((EPD398_COLOR_BYTES + (1 << BLE_BLOCK_SHIFT_MIN) - 1) / (1 << BLE_BLOCK_SHIFT_MIN) <= BLE_MAX_BLOCKS,
               "the smallest block size would need more blocks than BLE_MAX_BLOCKS holds");
 static_assert(BLE_FRAME_HEADER_LEN + 4 + 4 * ((EPD398_COLOR_BYTES + (1 << BLE_BLOCK_SHIFT_MIN) - 1) / (1 << BLE_BLOCK_SHIFT_MIN)) <= BLE_FRAME_MAX_LEN,
               "a BLOCK_CRCS frame for the smallest block size would not fit the frame format");
 
-// Map a canvas coordinate onto the panel's own framebuffer coordinate system.
+// 把画布坐标映射到面板自己的帧缓冲坐标系。
 //
-// The angle is measured clockwise: BLE_ROTATION = 90 means the canvas' top-left
-// corner ends up at the panel's top-right corner; 270 puts it at the panel's
-// bottom-left. Checked with tools/check_rotation.py that both are bijections and
-// that every panel pixel is written exactly once.
+// 角度按顺时针度量：BLE_ROTATION = 90 表示画布的左上角最终落在面板的右上角；
+// 270 则把它放在面板的左下角。已用 tools/check_rotation.py 检查过两者都是
+// 双射，且每个面板像素都恰好被写入一次。
 static inline void bleMapCanvasToPanel(int x, int y, int *outPx, int *outPy) {
 #if BLE_ROTATION == 90
     *outPx = (BLE_IMAGE_HEIGHT - 1) - y;
@@ -78,10 +74,9 @@ static inline void bleMapCanvasToPanel(int x, int y, int *outPx, int *outPy) {
 #endif
 }
 
-// One pixel of the panel framebuffer, in *panel* coordinates.
-// Only valid bounds-wise after bleMapCanvasToPanel(); callers pass canvas
-// coordinates and let the mapping keep them in range, but the checks below make
-// a future 4-rotation switch safe.
+// 面板帧缓冲的一个像素，使用 *面板* 坐标。
+// 只有在经过 bleMapCanvasToPanel() 之后边界才是有效的；调用方传入画布坐标
+// 并让映射把它们保持在范围内，但下面的检查让将来切换到 4 种旋转也是安全的。
 static inline void bleSetPanelPixel(uint8_t *buf, int px, int py, uint8_t color) {
     if (!buf) return;
     if (px < 0 || px >= EPD398_WIDTH || py < 0 || py >= EPD398_HEIGHT) return;
@@ -90,7 +85,7 @@ static inline void bleSetPanelPixel(uint8_t *buf, int px, int py, uint8_t color)
     buf[idx] = (uint8_t)((buf[idx] & ~(0x03 << shift)) | ((color & 0x03) << shift));
 }
 
-// One pixel of the canvas, written through the rotation.
+// 画布的一个像素，经由旋转写入。
 static inline void bleSetCanvasPixel(uint8_t *buf, int x, int y, uint8_t color) {
     if (x < 0 || x >= BLE_IMAGE_WIDTH || y < 0 || y >= BLE_IMAGE_HEIGHT) return;
     int px = 0, py = 0;
@@ -98,12 +93,11 @@ static inline void bleSetCanvasPixel(uint8_t *buf, int x, int y, uint8_t color) 
     bleSetPanelPixel(buf, px, py, color);
 }
 
-// Read one canvas pixel back out of the framebuffer, through the same rotation.
+// 通过同一个旋转，从帧缓冲里读回一个画布像素。
 //
-// This is what makes the whole-image CRC verifiable *after* a repair: the device
-// no longer has to know the payload it received, it can reconstruct it from the
-// pixels it ended up with. Going through the same mapping in the other direction
-// is also what guarantees the two never disagree.
+// 正是这一点让整幅图像 CRC 在 *一次修复之后* 仍然可验证：设备不再需要知道
+// 自己收到的载荷，它可以从最终得到的那些像素把它重建出来。反方向也走同一套
+// 映射，同样也是保证二者永远不会互相矛盾的原因。
 static inline uint8_t bleGetCanvasPixel(const uint8_t *buf, int x, int y) {
     if (!buf) return EPD398_WHITE;
     if (x < 0 || x >= BLE_IMAGE_WIDTH || y < 0 || y >= BLE_IMAGE_HEIGHT) return EPD398_WHITE;

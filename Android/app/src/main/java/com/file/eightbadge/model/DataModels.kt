@@ -3,7 +3,7 @@ package com.file.eightbadge.model
 import android.bluetooth.BluetoothDevice
 
 /**
- * Screen Orientation
+ * 屏幕方向
  */
 enum class ScreenOrientation(val width: Int, val height: Int, val displayName: String) {
     PORTRAIT(width = 552, height = 768, displayName = "竖屏"),
@@ -11,7 +11,7 @@ enum class ScreenOrientation(val width: Int, val height: Int, val displayName: S
 }
 
 /**
- * Image Format options
+ * 图像格式选项
  */
 enum class ImageFormat(val code: Byte, val bpp: Int, val expectedSize: Int, val displayName: String) {
     BPP2(code = 1, bpp = 2, expectedSize = 105984, displayName = "4色 (高画质)"),
@@ -19,7 +19,7 @@ enum class ImageFormat(val code: Byte, val bpp: Int, val expectedSize: Int, val 
 }
 
 /**
- * Scale Mode for image resizing.
+ * 图像缩放模式。
  */
 enum class ScaleMode(val displayName: String) {
     CROP_FILL("等比裁剪"),
@@ -28,7 +28,7 @@ enum class ScaleMode(val displayName: String) {
 }
 
 /**
- * Clean Customer-Facing Dithering Mode selection.
+ * 面向用户、简洁明了的抖动模式选项。
  */
 enum class DitherMode(val displayName: String, val description: String) {
     FLOYD_STEINBERG("Floyd-Steinberg 经典", "适合常规照片与人像。色彩过渡自然，是通用性最强的经典效果。"),
@@ -48,7 +48,7 @@ enum class DitherMode(val displayName: String, val description: String) {
 }
 
 /**
- * Device info parsed from GET_INFO (opcode 0x81)
+ * 从 GET_INFO（opcode 0x81）解析出的设备信息
  */
 data class DeviceInfo(
     val protocolVersion: Int = 3,
@@ -80,7 +80,7 @@ data class DeviceInfo(
 }
 
 /**
- * State enum representing device EVT_STATE
+ * 表示设备 EVT_STATE 的状态枚举
  */
 enum class DeviceState(val code: Int, val description: String) {
     IDLE(0, "空闲"),
@@ -102,7 +102,7 @@ enum class DeviceState(val code: Int, val description: String) {
 }
 
 /**
- * Error code enum from responses and EVT_STATE error
+ * 来自响应与 EVT_STATE 错误的错误码枚举
  */
 enum class ProtocolError(val code: Int, val message: String) {
     OK(0x00, "成功"),
@@ -128,7 +128,7 @@ enum class ProtocolError(val code: Int, val message: String) {
 }
 
 /**
- * Data payload received when EVT_REFRESH_BLOCKED (opcode 0xC3) occurs
+ * 发生 EVT_REFRESH_BLOCKED（opcode 0xC3）时收到的数据负载
  */
 data class RefreshBlockedEvent(
     val token: Byte,
@@ -140,7 +140,7 @@ data class RefreshBlockedEvent(
 )
 
 /**
- * Scanned BLE device item
+ * 扫描到的 BLE 设备条目
  */
 data class BleDeviceItem(
     val device: BluetoothDevice,
@@ -150,7 +150,7 @@ data class BleDeviceItem(
 )
 
 /**
- * Realtime image transfer progress tracking
+ * 实时图像传输进度跟踪
  */
 data class TransferProgress(
     val isTransferring: Boolean = false,
@@ -168,7 +168,7 @@ data class TransferProgress(
 }
 
 /**
- * Console log message
+ * 控制台日志消息
  */
 data class LogMessage(
     val id: Long = 0L,

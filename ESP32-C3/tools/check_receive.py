@@ -1,32 +1,27 @@
 #!/usr/bin/env python3
-"""Byte-level check of the receive path in ble_service.cpp.
+"""对 ble_service.cpp 中接收路径的字节级检查。
 
-The BLE firmware never stores the payload it receives: every byte is scattered
-straight into its final panel position, through the portrait->landscape rotation
-in ble_geometry.h, with per-block CRCs accumulated as it goes and the whole-image
-CRC reconstructed from the framebuffer at the end. A mistake in any of that
-produces an image that is subtly wrong - a shifted row, a flipped corner, a block
-reported good when it is not - and none of it is visible by eye on a 4-colour
-panel.
+BLE 固件从不存储它收到的载荷：每个字节都经过 ble_geometry.h 中
+竖屏->横屏的旋转，被直接散布到面板上的最终位置，同时一路累积
+按块（4 KB 校验块）的 CRC，并在最后从帧缓冲重建整图
+CRC。这其中任何一处出错都会产生一张微妙错误（subtly wrong）的图像 - 错位一行、
+翻转一个角、某个块本不正确却被报成正确 - 而这些在 4 色面板上用肉眼都看不出来。
 
-So this script transcribes the relevant C++ line by line, drives it through a
-full transfer including a deliberate corruption and repair, and checks the result
-against a reference implementation that does the obvious thing (rotate the whole
-canvas, then pack). Checks:
+因此本脚本逐行转写相关的 C++ 代码，驱动它完成一次完整的传输（其中
+包含一次刻意的损坏与修复），并把结果与一个参照实现进行比对，
+后者做的是最直白的事（旋转整张画布，然后再打包）。检查项：
 
-  1. the two advertised payload lengths;
-  2. the rotation is a bijection - every panel pixel written exactly once;
-  3. the scatter path reproduces rotate-then-pack byte for byte (2bpp and 1bpp);
-  4. the result does not depend on where chunk boundaries fall;
-  5. per-block CRCs are accumulated over the right byte ranges;
-  6. a deliberately corrupted block is detected, and repairing it makes the
-     image verify;
-  7. the whole-image CRC recomputed from the framebuffer equals a CRC over the
-     reference payload - including after a repair, which is the case a running
-     CRC accumulated during reception would get wrong;
-  8. RETRY_BLOCK's byte count for the short final block.
+  1. 两个对外公布的载荷长度；
+  2. 旋转是一个双射 - 每个面板像素恰好被写入一次；
+  3. 散布路径逐字节复现“先旋转再打包”的结果（2bpp 和 1bpp）；
+  4. 结果不依赖于分片边界落在哪里；
+  5. 按块的 CRC 在正确的字节区间上累积；
+  6. 一个被刻意损坏的块能被检测出来，且修复它后图像可以通过校验；
+  7. 从帧缓冲重算的整图 CRC 等于对参照载荷计算的 CRC - 包括在修复之后，
+     而这正是接收过程中累积的“运行中 CRC”会算错的情形；
+  8. 短的最后一块在 RETRY_BLOCK 下应返回的字节数。
 
-Run from anywhere:
+从任意位置运行：
 
     python tools/check_receive.py
 """
@@ -43,7 +38,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 FIRMWARE_DIR = os.path.dirname(HERE)
 DEFAULT_SRC = os.path.join(FIRMWARE_DIR, "src")
 
-# Mirror of ble_protocol.h / epd_398_4color.h.
+# ble_protocol.h / epd_398_4color.h 的镜像。
 CANVAS_W, CANVAS_H = 552, 768
 PANEL_W, PANEL_H = 768, 552
 CANVAS_ROW_BYTES_2BPP = CANVAS_W // 4      # 138
@@ -89,12 +84,12 @@ def read_chunk_max(src_dir: str) -> int:
 
 
 def check_format_storage(src_dir: str) -> None:
-    """The session format must not be stored in a bool.
+    """会话格式绝不能存在 bool 里。
 
-    BLE_FMT_2BPP is 1 and BLE_FMT_1BPP is 2, so `static bool s_format` turns
-    format 2 into `true` (== 1) and makes every 1bpp transfer decode and re-CRC
-    as 2bpp. The byte-level model below passes either way because it takes the
-    format as an argument - this check is what pins the C++ declaration.
+        BLE_FMT_2BPP 是 1、BLE_FMT_1BPP 是 2，所以 `static bool s_format` 会把
+        格式 2 变成 `true`（== 1），让每一次 1bpp 传输都按 2bpp 解码并重新计算
+        CRC。下面的字节级模型用哪种写法都会通过，因为它把格式当作参数传入 -
+        正是本检查项钉住了 C++ 中的声明。
     """
     text = open(os.path.join(src_dir, "ble_service.cpp"), encoding="utf-8").read()
     m = re.search(r"^static\s+(?:volatile\s+)?(\w+)\s+s_format\s*=", text, re.M)
@@ -105,11 +100,11 @@ def check_format_storage(src_dir: str) -> None:
 
 
 def check_end_image_ok_length(src_dir: str) -> None:
-    """The END_IMAGE success reply must be exactly the documented 8 bytes.
+    """END_IMAGE 的成功响应必须正好是文档所述的 8 字节。
 
-    It used to pass sizeof(r) (26, the array sized for the failure bitmap), so
-    every successful transfer shipped 18 bytes of uninitialised stack and an app
-    that validated the length saw a malformed frame instead of a finished image.
+        它过去传的是 sizeof(r)（26，即按失败位图开的数组大小），于是
+        每一次成功的传输都会多发 18 字节未初始化的栈数据，而会校验长度的 App
+        看到的会是一个畸形的帧，而不是一张完成的图像。
     """
     text = open(os.path.join(src_dir, "ble_service.cpp"), encoding="utf-8").read()
     m = re.search(r"sendResponse\(BLE_OP_END_IMAGE, seq, BLE_OK, r, ([^)]*)\)", text)
@@ -123,7 +118,7 @@ def check_end_image_ok_length(src_dir: str) -> None:
 
 
 def check_over_length_is_not_fatal(src_dir: str) -> None:
-    """Bytes past total_len must be ignored, not used to discard the image."""
+    """超过 total_len 的字节必须被忽略，而不是用来丢弃整张图像。"""
     text = open(os.path.join(src_dir, "ble_service.cpp"), encoding="utf-8").read()
     check("s_overflow" not in text,
           "no sticky s_overflow flag left in the receive path")
@@ -134,11 +129,11 @@ def check_over_length_is_not_fatal(src_dir: str) -> None:
 
 
 def check_end_state_hint(src_dir: str) -> None:
-    """END_IMAGE with no session must answer ERR_STATE + the 1-byte hint.
+    """没有会话时的 END_IMAGE 必须回 ERR_STATE + 那个 1 字节的提示。
 
-    A pipelining app gets no other signal: its extra DATA is dropped in silence
-    and no EVT_PROGRESS follows, so without this byte it waits forever for a
-    DISPLAYED that will never come.
+        流水线式发送的 App 得不到别的信号：它多发的 DATA 被静默丢弃，
+        后面也不会有 EVT_PROGRESS，所以没有这个字节，它就会永远等一个
+        不会到来的 DISPLAYED。
     """
     text = open(os.path.join(src_dir, "ble_service.cpp"), encoding="utf-8").read()
     m = re.search(r"sendResponse\(BLE_OP_END_IMAGE, seq, BLE_ERR_STATE, ([^,]+), 1\)", text)
@@ -147,18 +142,18 @@ def check_end_state_hint(src_dir: str) -> None:
 
 
 class Panel:
-    """The firmware framebuffer: panel-native, written through the rotation."""
+    """固件的帧缓冲：面板原生方向，写入时经过旋转。"""
 
     def __init__(self, rotation: int) -> None:
         self.rotation = rotation
         self.buf = bytearray([0x55]) * (PANEL_W * PANEL_H // 4)
         self.writes = [0] * (PANEL_W * PANEL_H)
 
-    # --- mirror of ble_geometry.h -------------------------------------
+    # --- ble_geometry.h 的镜像 -----------------------------------------
     def map(self, x: int, y: int) -> tuple[int, int]:
         if self.rotation == 90:
             return (CANVAS_H - 1) - y, x
-        return y, (CANVAS_W - 1) - x   # 270 (180 is not a valid rotation here)
+        return y, (CANVAS_W - 1) - x   # 270（180 在这里不是合法的旋转）
 
     def set_canvas(self, x: int, y: int, color: int) -> None:
         if not (0 <= x < CANVAS_W and 0 <= y < CANVAS_H):
@@ -176,7 +171,7 @@ class Panel:
         idx = py * PANEL_ROW_BYTES + (px >> 2)
         return (self.buf[idx] >> (6 - ((px & 3) * 2))) & 0x03
 
-    # --- mirror of ble_service.cpp::storePayloadByte -------------------
+    # --- ble_service.cpp::storePayloadByte 的镜像 -----------------------
     def store_payload_byte(self, offset: int, b: int, fmt: int) -> None:
         if fmt == FMT_2BPP:
             ys = offset // CANVAS_ROW_BYTES_2BPP
@@ -192,13 +187,13 @@ class Panel:
                 white = ((b >> (7 - k)) & 1) != 0
                 self.set_canvas(xs + k, ys, WHITE if white else BLACK)
 
-    # --- mirror of ble_service.cpp::recomputeWholeCrc ------------------
+    # --- ble_service.cpp::recomputeWholeCrc 的镜像 ----------------------
     #
-    # The firmware keeps the *raw* CRC state (init 0xFFFFFFFF, xor at the end).
-    # zlib.crc32() wants the already-conditioned previous value instead, so the
-    # faithful mirror starts from 0 and never xors: zlib.crc32(b, zlib.crc32(a))
-    # == zlib.crc32(a + b). Starting from 0xFFFFFFFF here would silently produce
-    # a completely different number for the same bytes.
+        # 固件保存的是 *原始* CRC 状态（初值 0xFFFFFFFF，结束时异或）。
+        # 而 zlib.crc32() 需要的是已经处理过的前一个值，所以忠实的镜像
+        # 从 0 开始、且从不做异或：zlib.crc32(b, zlib.crc32(a))
+        # == zlib.crc32(a + b)。若在这里从 0xFFFFFFFF 开始，就会对同样的字节
+        # 静默地算出一个完全不同的数字。
     def recompute_whole_crc(self, fmt: int) -> int:
         crc = 0
         row = bytearray(CANVAS_ROW_BYTES_2BPP)
@@ -227,7 +222,7 @@ class Panel:
 
 
 class Device:
-    """Transcription of the transfer state machine in ble_service.cpp."""
+    """ble_service.cpp 中传输状态机的转写。"""
 
     def __init__(self, palette: Panel, fmt: int, block_shift: int, total: int) -> None:
         self.p = palette
@@ -238,27 +233,27 @@ class Device:
         self.block_count = ((total + self.block_size - 1) // self.block_size
                             if block_shift else 0)
         self.declared_blocks = [0] * MAX_BLOCKS
-        self.begin_crc = None         # whole-image CRC declared in BEGIN_IMAGE
+        self.begin_crc = None         # BEGIN_IMAGE 中声明的整图 CRC
         self.bad = bytearray((MAX_BLOCKS + 7) // 8)
         self.bad_count = 0
         self.block_index = 0
-        self.block_crc = 0            # zlib convention: 0, not 0xFFFFFFFF
+        self.block_crc = 0            # zlib 约定：0，而不是 0xFFFFFFFF
         self.block_bytes = 0
         self.received = 0
-        # Bytes past total_len: ignored (they cannot be stored anywhere) but
-        # counted, so END_IMAGE can name them when the image fails to verify.
-        # There is deliberately no sticky "overflow" state - an app that repeats
-        # a chunk must not lose an image that was already complete.
+                # 超过 total_len 的字节：被忽略（它们无处可存），但会被
+                # 计数，这样 END_IMAGE 就能在图像校验失败时指出它们。
+                # 这里刻意不设粘滞的“溢出”状态 - 重发某个分片的 App
+                # 不应该丢掉一张本来就已完整的图像。
         self.stray_bytes = 0
-        # Mirror of s_dataHint (ble_protocol.h BLE_HINT_*): what the next
-        # END_IMAGE with no session will tell the app. Cleared by BEGIN.
+                # s_dataHint（ble_protocol.h 的 BLE_HINT_*）的镜像：下一次
+                # 没有会话的 END_IMAGE 将告诉 App 的内容。由 BEGIN 清空。
         self.hint = 0
         self.fixing = False
         self.fix_block = 0
         self.fix_offset = 0
         self.fix_len = 0
         self.fix_needed = 0
-        self.fix_crc = 0              # zlib convention
+        self.fix_crc = 0              # zlib 约定
         self.progress = []
 
     def _mark(self, index: int, bad_colour: bool) -> None:
@@ -280,7 +275,7 @@ class Device:
     def begin_blocks(self, crcs: list[int], begin_crc: int | None = None) -> None:
         self.declared_blocks = list(crcs)
         self.begin_crc = begin_crc
-        # resetTransfer(): a new session starts with a clean slate.
+        # resetTransfer()：新会话从干净状态开始。
         self.stray_bytes = 0
         self.hint = 0
 
@@ -288,10 +283,9 @@ class Device:
         n = len(chunk)
         if self.fixing:
             take = min(n, self.fix_needed)
-            # Damage offset advances with the bytes already folded into the
-            # block, not with the chunk-local index. (Using the local index
-            # pinned every chunk to the block start - the bug this tool caught
-            # in the firmware.)
+            # 损坏偏移随着已经折入该块的字节前进，而不是随分片内的
+                        # 局部下标。（用局部下标会把每个分片都钉在块起始处 - 正是
+                        # 本工具在固件里抓到的那个 bug。）
             consumed = self.fix_len - self.fix_needed
             for i in range(take):
                 self.p.store_payload_byte(self.fix_offset + consumed + i, chunk[i], self.fmt)
@@ -304,33 +298,32 @@ class Device:
                 self.progress.append((self.fix_offset, self.total, True))
             return
 
-        # Mirror of the clamp in ble_service.cpp::handleData(): only what fits is
-        # stored, the rest is counted. Rejecting the whole chunk instead (which
-        # is what "overflow => discard the image" amounted to) is a failure mode
-        # this tool now guards against.
+        # ble_service.cpp::handleData() 中钳位操作的镜像：只存能放下的，
+                # 其余的被计数。改为整块拒绝（也就是“溢出 => 丢弃图像”的做法）
+                # 是一种失败模式，本工具现在正是它的守卫。
         take = max(0, min(n, self.total - self.received))
         if take < n:
             self.stray_bytes += n - take
         if take == 0:
-            # handleData() reaches its hint assignment even when nothing could be
-            # stored, so a wholly over-length chunk still updates it.
+            # 即使什么都存不下，handleData() 也会执行到它的提示赋值语句，
+                        # 因此一个完全超长的分片仍然会更新它。
             self.hint = 2 if self.stray_bytes else (1 if self.received >= self.total else 0)
             self.progress.append((self.received, self.total, False))
             return
         chunk = chunk[:take]
         n = take
 
-        # ONE pass - store, roll into the current block, close on the last byte.
-        # See the comment in ble_service.cpp: doing the block bookkeeping in a
-        # second pass folds the bytes after a boundary into the previous block.
+        # 只遍历一遍 - 存储、折入当前块、在最后一个字节处收尾。
+                # 见 ble_service.cpp 中的注释：把块的记账放到第二遍去做，
+                # 会把边界之后的字节折进前一个块。
         for i in range(n):
             offset = self.received + i
             self.p.store_payload_byte(offset, chunk[i], self.fmt)
             if not self.block_shift:
                 continue
-            # Reset on the first byte of a new chunk, not at the boundary, so a
-            # completely lost write leaves block_bytes == block_size for
-            # close_missing_blocks() to name the lost block.
+            # 在新分片的第一个字节处复位，而不是在边界处复位，这样一次
+                        # 完全丢失的写入会让 block_bytes == block_size，
+                        # 从而让 close_missing_blocks() 能点出丢失的那个块。
             if self.block_bytes == self.block_size:
                 self.block_crc = 0
                 self.block_bytes = 0
@@ -342,14 +335,14 @@ class Device:
                 self.block_index += 1
         self.received += n
 
-        # Mirror of the hint assignment at the end of handleData(): what an END
-        # arriving with no session would report (docs 6.3).
+        # handleData() 末尾那处提示赋值的镜像：一个没有会话时就到达的 END
+                # 会报告的内容（文档 6.3）。
         self.hint = 2 if self.stray_bytes else (1 if self.received >= self.total else 0)
 
         self.progress.append((self.received, self.total, False))
 
     def close_missing_blocks(self) -> None:
-        """Mirror of closeMissingBlocks(): name blocks whose bytes never came."""
+        """closeMissingBlocks() 的镜像：点出那些字节从未到达的块。"""
         if not self.block_shift or not self.block_count:
             return
         if self.block_index >= self.block_count:
@@ -364,10 +357,10 @@ class Device:
         self.block_bytes = 0
 
     def retry_block(self, index: int) -> int:
-        """Mirror of handleRetryBlock(); returns the byte count for the app.
+        """handleRetryBlock() 的镜像；返回给 App 的字节数。
 
-        0 = the block was already good, -1 = ERR_BUSY (a repair is still
-        outstanding: re-arming would silently drop what the app already sent).
+                0 = 该块本来就已经正确，-1 = ERR_BUSY（还有一次修复尚未完成：
+                重新挂起会静默丢掉 App 已经发来的数据）。
         """
         if index >= self.block_count:
             raise AssertionError("index out of range")
@@ -385,12 +378,12 @@ class Device:
         return self.fix_needed
 
     def end(self, declared_whole_crc: int) -> tuple[int, int]:
-        """Mirror of handleEndImage(); returns (status, payload_len)."""
+        """handleEndImage() 的镜像；返回 (status, payload_len)。"""
         self.close_missing_blocks()
         actual = self.p.recompute_whole_crc(self.fmt)
         complete = self.received == self.total
         blocks_enabled = self.block_shift != 0
-        # BEGIN and END must describe the same payload.
+        # BEGIN 和 END 必须描述同一个载荷。
         declared_ok = self.begin_crc is None or self.begin_crc == declared_whole_crc
         blocks_ok = (blocks_enabled and self.bad_count == 0
                      and self.block_index == self.block_count)
@@ -400,19 +393,19 @@ class Device:
         if ok:
             return 0x00, 8
         if self.stray_bytes:
-            # Framing, not just data: more bytes arrived than were declared and
-            # the payload did not verify either. 8-byte failure payload, and the
-            # session stays retryable (it is not reset).
+            # 是帧格式问题，不只是数据问题：到达的字节比声明的多，
+                        # 而载荷也没能通过校验。8 字节的失败载荷，并且
+                        # 会话仍然可以重传（它没有被复位）。
             return 0x0A, 8
         if blocks_enabled and self.bad_count > 0:
             return 0x0C, 10 + (self.block_count + 7) // 8
         return 0x06, 8
 
 
-# ------------------------------------------------------------------ test data
+# ------------------------------------------------------------------ 测试数据
 
 def make_canvas() -> list[list[int]]:
-    """A canvas whose every pixel carries its own coordinates."""
+    """一张每个像素都携带自己坐标的画布。"""
     canvas = [[WHITE] * CANVAS_W for _ in range(CANVAS_H)]
     for y in range(CANVAS_H):
         for x in range(CANVAS_W):
@@ -444,7 +437,7 @@ def threshold(canvas: list[list[int]]) -> list[list[int]]:
 
 
 def reference_panel(canvas: list[list[int]], rotation: int) -> bytes:
-    """The obvious way: rotate the finished canvas, then pack."""
+    """最直白的做法：旋转画好的画布，然后打包。"""
     panel = [[WHITE] * PANEL_W for _ in range(PANEL_H)]
     for y in range(CANVAS_H):
         for x in range(CANVAS_W):
@@ -462,7 +455,7 @@ def reference_panel(canvas: list[list[int]], rotation: int) -> bytes:
 
 
 def block_crcs(payload: bytes, block_size: int) -> list[tuple[int, int]]:
-    """[(crc, byte_length), ...] - the last block may be short."""
+    """[(crc, byte_length), ...] - 最后一块可能较短。"""
     out = []
     for off in range(0, len(payload), block_size):
         chunk = payload[off:off + block_size]
@@ -510,20 +503,20 @@ def main() -> int:
           f"chunk max {chunk_max} B")
     print()
 
-    # --- 0. the format selector itself --------------------------------
+    # --- 0. 格式选择器本身 --------------------------------------------
     check_format_storage(args.src)
-    # --- 0b. the four regressions this tool is the guard for ----------
+    # --- 0b. 本工具所守护的四个回归项 ----------------------------------
     check_end_image_ok_length(args.src)
     check_over_length_is_not_fatal(args.src)
     check_end_state_hint(args.src)
 
-# --- 1. payload lengths -------------------------------------------
+# --- 1. 载荷长度 ---------------------------------------------------
     check(BYTES_2BPP == PANEL_W * PANEL_H // 4,
           f"2bpp payload: {BYTES_2BPP} bytes = {CANVAS_ROW_BYTES_2BPP} x {CANVAS_H} rows")
     check(BYTES_1BPP == PANEL_W * PANEL_H // 8,
           f"1bpp payload: {BYTES_1BPP} bytes = {CANVAS_ROW_BYTES_1BPP} x {CANVAS_H} rows")
 
-    # --- 2. rotation is a bijection -----------------------------------
+    # --- 2. 旋转是双射 -------------------------------------------------
     probe = Panel(rotation)
     seen = set()
     outside = 0
@@ -553,7 +546,7 @@ def main() -> int:
         panel = Panel(rotation)
         dev = Device(panel, fmt, block_shift, len(payload))
 
-        # --- 3. scatter matches rotate-then-pack ----------------------
+        # --- 3. 散布结果与“先旋转再打包”一致 ----------------------------
         dev.begin_blocks([c for c, _ in bcrcs])
         for ch in chunked(payload, chunk_max):
             dev.data(ch, window)
@@ -566,11 +559,11 @@ def main() -> int:
         check(missed == 0, f"{label}: every panel pixel written exactly once "
                            f"({missed} written 0 or >1 times)")
 
-        # --- 5. block CRCs over the right ranges ----------------------
+        # --- 5. 按块的 CRC 覆盖正确的区间 ------------------------------
         check(dev.bad_count == 0 and dev.block_count == blocks,
               f"{label}: all {blocks} block CRCs verified on a clean transfer")
 
-        # --- 7. recomputed whole CRC --------------------------------
+        # --- 7. 重算整图 CRC --------------------------------------------
         got = panel.recompute_whole_crc(fmt)
         want = zlib.crc32(payload) & 0xFFFFFFFF
         check(got == want, f"{label}: recomputed whole CRC {got:08X} == payload CRC {want:08X}")
@@ -579,7 +572,7 @@ def main() -> int:
         check(status == 0x00 and plen == 8,
               f"{label}: END_IMAGE -> OK ({status:#04x}, {plen}-byte payload)")
 
-        # --- 3b. BEGIN and END must agree on the whole-image CRC -------
+        # --- 3b. BEGIN 和 END 必须对整图 CRC 达成一致 -------------------
         panel_x = Panel(rotation)
         dev_x = Device(panel_x, fmt, block_shift, len(payload))
         dev_x.begin_blocks([c for c, _ in bcrcs], begin_crc=(want ^ 0xFFFFFFFF))
@@ -589,10 +582,10 @@ def main() -> int:
         check(status_x == 0x06,
               f"{label}: BEGIN/END whole-image CRC mismatch -> ERR_CRC")
 
-        # --- 4. chunk boundaries do not matter -----------------------
-        # Swept, not just tested once: a chunk size that does not divide the
-        # block size is what exposed the two-pass block bookkeeping bug, and a
-        # real MTU that lands on an awkward size must keep working.
+        # --- 4. 分片边界无关紧要 ---------------------------------------
+                # 是扫描而不是只测一次：分片大小不能整除块大小这一点
+                # 正是暴露两遍式块记账 bug 的原因，而真实 MTU 落到一个
+                # 别扭的尺寸时也必须照常工作。
         sweep_ok = True
         sweep_problems = []
         for size in (137, 251, 247, 512, 1000, 4096, 4097):
@@ -608,7 +601,7 @@ def main() -> int:
                         f"chunk sizes 137/251/247/512/1000/4096/4097"
                         + ("" if sweep_ok else f"  <- {' '.join(sweep_problems)}"))
 
-        # --- 6. corrupt a block, detect it, repair it -----------------
+        # --- 6. 损坏一个块、检测它、修复它 -----------------------------
         bad_index = 3
         off = bad_index * block_size
         corrupt = bytearray(payload)
@@ -617,8 +610,8 @@ def main() -> int:
 
         panel_c = Panel(rotation)
         dev_c = Device(panel_c, fmt, block_shift, len(payload))
-        # The app declares the CRCs of what it *thinks* it sent, so the device
-        # must notice that what arrived is different.
+        # App 声明的是它 *以为* 自己发出去的字节的 CRC，所以设备
+                # 必须察觉实际到达的内容与之不同。
         dev_c.begin_blocks([c for c, _ in bcrcs])
         for ch in chunked(bytes(corrupt), chunk_max):
             dev_c.data(ch, window)
@@ -629,7 +622,7 @@ def main() -> int:
         check(status_c == 0x0C and plen_c == 10 + (dev_c.block_count + 7) // 8,
               f"{label}: END_IMAGE -> ERR_BLOCKS with a {plen_c}-byte bitmap payload")
 
-        # Repair: resend only that block, from its own offset.
+        # 修复：只重发那一个块，从它自己的偏移开始。
         needed = dev_c.retry_block(bad_index)
         check(needed == bcrcs[bad_index][1],
               f"{label}: RETRY_BLOCK asks for {needed} bytes "
@@ -643,7 +636,7 @@ def main() -> int:
               + ("" if bytes(panel_c.buf) == ref
                  else f"  <- {first_difference(bytes(panel_c.buf), ref)}"))
 
-        # --- 7b. the recomputed CRC survives the repair ---------------
+        # --- 7b. 重算的 CRC 在修复之后依然成立 -------------------------
         got_after = panel_c.recompute_whole_crc(fmt)
         check(got_after == want,
               f"{label}: recomputed whole CRC after repair {got_after:08X} == {want:08X}")
@@ -653,9 +646,9 @@ def main() -> int:
               f"{label}: END_IMAGE after repair -> OK (a running CRC accumulated "
               f"during reception could not have known this)")
 
-        # --- 6b. one repair at a time ---------------------------------
-        # Arming a second block while the first is still short would drop the
-        # bytes already received for it, so the device refuses instead.
+        # --- 6b. 一次只修一个块 ---------------------------------------
+                # 在第一个块还没收全时就挂起第二个块，会丢掉已经收到的
+                # 那些字节，所以设备改为拒绝。
         panel_k = Panel(rotation)
         dev_k = Device(panel_k, fmt, block_shift, len(payload))
         dev_k.begin_blocks([c for c, _ in bcrcs])
@@ -673,7 +666,7 @@ def main() -> int:
         check(dev_k.bad_count == 0,
               f"{label}: finishing the first repair still verifies the block")
 
-        # --- 8. the short final block ---------------------------------
+        # --- 8. 短的最后一块 -------------------------------------------
         last = blocks - 1
         last_len = bcrcs[last][1]
         expected_last = len(payload) - last * block_size
@@ -681,7 +674,7 @@ def main() -> int:
               f"{label}: final block {last} is {last_len} bytes "
               f"(payload {len(payload)} = {last} x {block_size} + {expected_last})")
 
-        # --- a short last block must still be detectable --------------
+        # --- 短的最后一块也必须能被检测到 ----------------------------
         corrupt_last = bytearray(payload)
         corrupt_last[len(payload) - 3] ^= 0x81
         panel_e = Panel(rotation)
@@ -700,13 +693,13 @@ def main() -> int:
         check(dev_e.bad_count == 0 and bytes(panel_e.buf) == ref,
               f"{label}: final block repaired, framebuffer matches")
 
-        # --- 9. a completely lost DATA write ---------------------------
-        # A write can be dropped whole (writeCharacteristic returned false, the
-        # controller buffer overflowed). Until the gap is closed those bytes
-        # never arrive, the tail block never closes, and END used to answer a
-        # bare ERR_CRC forever. It must name the missing blocks instead, and a
-        # RETRY_BLOCK repair of those blocks must make the image verify even
-        # though s_received never reaches total.
+        # --- 9. 一次完全丢失的 DATA 写入 --------------------------------
+                # 一次写入可能整条被丢掉（writeCharacteristic 返回 false、控制器
+                # 缓冲溢出）。在这个缺口被补上之前，那些字节永远不到达，
+                # 尾部块永远收不了尾，而 END 过去会一直只回一个
+                # 干巴巴的 ERR_CRC。它必须改为点出缺失的块，并且
+                # 对这些块做一次 RETRY_BLOCK 修复后必须能让图像通过校验，
+                # 即使 s_received 永远到不了 total。
         chunks = list(chunked(payload, chunk_max))
         for dropped in (len(chunks) // 2, len(chunks) - 1):
             panel_g = Panel(rotation)
@@ -734,17 +727,16 @@ def main() -> int:
                   f"{label}: dropped chunk {dropped} repaired, END OK"
                   + ("" if same_g else f"  <- {first_difference(bytes(panel_g.buf), ref)}"))
 
-        # --- 10. bytes past total_len are ignored, not fatal -----------
-        # An app that re-sends its last chunk (because it never saw the progress
-        # report) used to lose the whole image to ERR_OVERFLOW even though every
-        # pixel and every block CRC were correct. The extra bytes cannot be
-        # stored anywhere, so they are dropped and counted.
+        # --- 10. 超过 total_len 的字节被忽略，而不是致命错误 -----------
+                # 重发最后一个分片的 App（因为它没看到进度上报）过去会因为
+                # ERR_OVERFLOW 丢掉整张图像，哪怕每个像素和每个块的 CRC
+                # 都正确。多出来的字节无处可存，所以它们被丢弃并计数。
         panel_i = Panel(rotation)
         dev_i = Device(panel_i, fmt, block_shift, len(payload))
         dev_i.begin_blocks([c for c, _ in bcrcs])
         for ch in chunks:
             dev_i.data(ch, window)
-        dev_i.data(chunks[-1], window)          # the repeat
+        dev_i.data(chunks[-1], window)          # 这次重复
         status_i, plen_i = dev_i.end(want)
         check(status_i == 0x00 and plen_i == 8 and dev_i.stray_bytes == len(chunks[-1]),
               f"{label}: a repeated final chunk is ignored "
@@ -752,14 +744,14 @@ def main() -> int:
         check(bytes(panel_i.buf) == ref,
               f"{label}: the repeat left the framebuffer untouched")
 
-        # --- 10b. over-length + a real defect -> ERR_OVERFLOW ----------
-        # The tolerance must not weaken the diagnosis: if the payload also fails
-        # to verify, the over-length framing is what the app is told about (and
-        # it stays retryable instead of being reset).
+        # --- 10b. 超长 + 一个真实缺陷 -> ERR_OVERFLOW ------------------
+                # 这种宽容绝不能削弱诊断能力：如果载荷同时也校验失败，
+                # 那么告诉 App 的就是超长的帧格式问题（而且会话保持可重传，
+                # 不会被复位）。
         panel_j = Panel(rotation)
         dev_j = Device(panel_j, fmt, block_shift, len(payload))
         dev_j.begin_blocks([c for c, _ in bcrcs])
-        dev_j.data(bytes(corrupt), window)      # corrupt block from test 6
+        dev_j.data(bytes(corrupt), window)      # 来自测试 6 的损坏块
         for ch in chunks[1:]:
             dev_j.data(ch, window)
         dev_j.data(chunks[-1], window)
@@ -768,9 +760,9 @@ def main() -> int:
               f"{label}: over-length plus a bad block -> ERR_OVERFLOW "
               f"({status_j:#04x}, {plen_j} bytes)")
 
-        # --- 10c. the data_hint contract (docs 6.3) --------------------
-        # A pipelining app has no other signal, so this byte is the difference
-        # between "wait for DISPLAYED" and "start over".
+        # --- 10c. data_hint 契约（文档 6.3）----------------------------
+                # 流水线式发送的 App 没有别的信号，所以这个字节就是
+                # “等 DISPLAYED” 和 “重新开始” 之间的分界。
         check(dev_i.hint == 2,
               f"{label}: over-length bytes leave the hint at DATA_IGNORED "
               f"({dev_i.hint})")

@@ -12,7 +12,7 @@ ESP32-C3-SuperMini + 3.98″ 四色墨水屏（A1 面板）的**纯蓝牙固件*
 - **刷新冷却（硬性）**：两次**整屏刷新**之间强制 **≥180 秒**。这不是可选项 —— 四色屏一次刷屏是
   15–25 秒的双极性交流电泳，间隔不足会让颜料粒子团聚，造成**不可逆**的串色与残影。
   冷却不足时设备回 `ERR_COOLDOWN` + 发事件，App 弹窗、用户确认后才放行；**默认不确认就不刷**。
-  确认是受控例外：距上次不足 60 秒不放行，上次是强刷则需等满 180 秒。设备没有可信时钟，
+  用户确认后**一定放行**（v1.3.2 起取消确认的时间下限），代价是每确认一次多刷一次。设备没有可信时钟，
   同一上电周期内 `SYNC_TIME` 的累计超前受 uptime 限制；上电后的第一次同步是信任边界。
   详见 [`docs/BLE_PROTOCOL.md`](docs/BLE_PROTOCOL.md) 的「刷新冷却」一节。
 - **单中心**：固件主动断开第二个连接；提示屏绘制期间也占用帧缓冲，`BEGIN_IMAGE` / `SHOW_HINT`
@@ -45,7 +45,7 @@ ESP32-C3-SuperMini + 3.98″ 四色墨水屏（A1 面板）的**纯蓝牙固件*
 | 上电 | 初始化 BLE，广播 `8adge-XXXXX`（`XXXXX` = 站点 MAC 后 5 位十六进制，大写）；不动面板 |
 | 无连接满 2 分钟 | 画提示屏：四周 24 块四色循环色块（黑→白→红→黄，绕屏 6 圈）+ 内侧 3 px 黑色细线 + 中间三行黑字。**冷启动且 App 还没连上时可能推迟到开机约 3 分钟**（无时钟，冷却只能按 uptime 保守判断）|
 | 收到图片 | 逐块校验 CRC32 → 全部通过才刷屏（15–25 s）→ 发 `EVT_STATE(DISPLAYED)`；校验不过屏幕保持原样（失败响应后设备留在接收态并补发 `EVT_STATE(RECEIVING)`，App 不会卡在 `VERIFYING`）|
-| **冷却不足** | 距上次整屏刷新 <180 s 时，`BEGIN_IMAGE` / `SHOW_HINT` 回 `ERR_COOLDOWN` + `EVT_REFRESH_BLOCKED`；App 弹窗，用户确认（`CONFIRM_REFRESH`）后才刷，不确认就不刷。确认是**受控例外**：距上次不足 60 秒不放行，上次是强刷则需等满 180 秒 |
+| **冷却不足** | 距上次整屏刷新 <180 s 时，`BEGIN_IMAGE` / `SHOW_HINT` 回 `ERR_COOLDOWN` + `EVT_REFRESH_BLOCKED`；App 弹窗，用户确认（`CONFIRM_REFRESH`）后才刷，不确认就不刷。用户确认后**一定放行**（v1.3.2 起取消确认的时间下限；代价是每确认一次多刷一次）|
 | 刷屏期间 | `BEGIN_IMAGE` / `SHOW_HINT` 都回 `ERR_BUSY`（图片和提示屏都会占用帧缓冲）；连接不断，通知照发（刷屏在 `loop()` 里做，不在 BLE 回调里） |
 | 刷屏期间还在流水线写 `DATA` | 字节被忽略（不能改写正在送屏的缓冲）。这类写入不再有任何回包，所以：之后若发 `END_IMAGE`，回 `ERR_STATE` + 1 字节 `data_hint = 1`；App 应据此**重算窗口计数**并重新 `BEGIN_IMAGE`。设备限频打一行日志 |
 | 多发/重复发的尾块 | 超出 `total_len` 的字节被忽略，**不会**再让一张已通过校验的图作废；只有最终校验失败时才回 `ERR_OVERFLOW` |
@@ -84,9 +84,9 @@ esptool.py --chip esp32c3 --port COMx write_flash 0x0 bin\8adge_BLE_398_A1.bin
 
 关键依赖与占用：`h2zero/NimBLE-Arduino@1.4.3`（**必须锁 1.4.x**：2.x 需要 Arduino-ESP32 3.x / IDF 5，
 本项目 core 3.20017 = Arduino-ESP32 2.0.17）；NimBLE 比内置 Bluedroid 省约 400 KB flash；
-分区表 `min_spiffs.csv`；v1.3.1 实测 **RAM 7.5%（24572 B）/ Flash 29.6%（581342 B）**
+分区表 `min_spiffs.csv`；v1.3.2 实测 **RAM 7.5%（24572 B）/ Flash 29.5%（580938 B）**
 （`pio run` release，framework-arduinoespressif32 3.20017 + NimBLE-Arduino 1.4.3，无警告）；
-合并镜像 `bin/8adge_BLE_398_A1.bin` 为 674352 字节。
+合并镜像 `bin/8adge_BLE_398_A1.bin` 为 673920 字节。
 
 ## 4. 目录结构
 
@@ -114,7 +114,7 @@ ESP32-C3/
     ├── gen_ble_font.py         从 assets/fonts 的 TTF 生成 src/ble_font.h
     ├── preview_hint_screen.py  在电脑上把提示屏渲染成 PNG（不烧录就能验版式，并自检）
     ├── check_receive.py        ★ 逐字节对拍接收路径（旋转/块校验/重传/整图重算）
-    ├── check_refresh_guard.py  ★ 对拍 180 秒冷却状态机（时钟钳制/强刷下限/授权绑定）
+    ├── check_refresh_guard.py  ★ 对拍 180 秒冷却状态机（时钟钳制/确认授权/令牌绑定）
     └── check_docs.py           核对 docs/BLE_PROTOCOL.md 里的常量与头文件一致
 ```
 
@@ -179,8 +179,8 @@ python tools\check_docs.py                        # 改协议常量或协议文�
   设备没有时钟（不联网、RTC 断电即失），冷启动/拔电后的间隔只能靠 uptime 下界保守推断，
   这套逻辑集中在 `refresh_guard.cpp` 里。时钟由 App 的 `SYNC_TIME`（UTC 秒）提供，
   且同一上电周期内累计超前 uptime 超过 30 秒的同步会被拒；时钟落后于 NVS 记录时退回
-  uptime 判断（不会永久锁死）。App 确认的授权只对被拒的那条命令有效，强刷还有 60 秒
-  / 180 秒的下限。
+  uptime 判断（不会永久锁死）。App 确认的授权只对被拒的那条命令有效；用户确认后一定放行
+  （v1.3.2 起取消时间下限），令牌只为被拒过的请求签发并在一次绘制后消耗。
 - 冷却规则改动时，`docs/BLE_PROTOCOL.md` 的「刷新冷却」、`ble_protocol.h` 的
   `BLE_REFRESH_MIN_GAP_S` 与 `config.h` 的 `BLE_REFRESH_MIN_GAP_MS` 必须一致
   （`refresh_guard.cpp` 里有 `static_assert` 拦一条，跨文档的靠 `tools/check_docs.py`）。

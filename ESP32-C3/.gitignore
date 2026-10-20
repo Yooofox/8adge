@@ -7,6 +7,6 @@
 # macOS
 .DS_Store
 
-# tools/preview_hint_screen.py output - a local sanity check, not a source file
+# tools/preview_hint_screen.py 的输出——本地版式自检用，不是源文件
 hint_screen_preview.png
 preview/

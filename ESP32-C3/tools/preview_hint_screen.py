@@ -1,27 +1,26 @@
 #!/usr/bin/env python3
-"""Render the BLE hint screen on the host and write it out as a PNG.
+"""在主机上渲染 BLE 提示屏，并把它输出成 PNG。
 
-The panel takes 15-25 s to refresh and the firmware has to be flashed first, so
-checking a layout change on real hardware is slow. This script re-implements
-``ble_screen.cpp``'s drawing - the four-colour ring, the keyline, and the three
-text lines - reads the *generated* glyph tables straight out of
-``src/ble_font.h``, and writes the resulting frame as a PNG.
+面板刷新一次要 15-25 s，而且还得先把固件烧进去，所以在真实硬件上检查
+一处布局改动很慢。本脚本重新实现了 ``ble_screen.cpp`` 的绘制
+（四色圆环、细边线以及三行文字），直接从 ``src/ble_font.h`` 读取
+*生成的* 字形表，并把得到的画面写成 PNG。
 
-Everything is done in the **portrait canvas** (552x768) and then rotated exactly
-the way ``ble_geometry.h`` rotates it onto the panel, so the preview shows what
-the glass will show. Nothing about the layout is duplicated by hand, so what this
-script catches is exactly what is easy to get wrong: line widths against the
-ring, the colour cycle round the perimeter, and text colliding with the border.
+一切都先在 **竖屏画布**（552x768）里完成，然后再完全按照
+``ble_geometry.h`` 的方式旋转到面板上，因此预览显示的就是玻璃上会显示的内容。
+布局没有任何一处是手工重复实现的，所以本脚本能抓到的问题恰好就是那些
+容易弄错的地方：文字行宽与圆环的冲突、沿周边的颜色循环、
+以及文字与边框的碰撞。
 
-Run from anywhere (Pillow is required - ``pip install pillow``):
+从任意位置运行（需要 Pillow - ``pip install pillow``）：
 
     python tools/preview_hint_screen.py
 
-Options:
-    --name 8adge-8D134      device name to render (default 8adge-8D134)
-    --rotation 90           canvas->panel rotation, 90 or 270 (default 90)
-    --scale 2               upscale factor for the PNG
-    --out preview.png       output path
+选项：
+    --name 8adge-8D134      要渲染的设备名（默认 8adge-8D134）
+    --rotation 90           画布->面板的旋转，90 或 270（默认 90）
+    --scale 2               PNG 的放大倍数
+    --out preview.png       输出路径
 """
 
 from __future__ import annotations
@@ -33,7 +32,7 @@ import sys
 
 try:
     from PIL import Image
-except ImportError:  # pragma: no cover - dependency hint
+except ImportError:  # pragma: no cover - 依赖提示
     sys.exit("Pillow is required: pip install pillow")
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -41,30 +40,30 @@ FIRMWARE_DIR = os.path.dirname(HERE)
 DEFAULT_FONT = os.path.join(FIRMWARE_DIR, "src", "ble_font.h")
 DEFAULT_SRC = os.path.join(FIRMWARE_DIR, "src")
 
-# Geometry - mirrors ble_protocol.h / config.h / epd_398_4color.h.
-CANVAS_W, CANVAS_H = 552, 768     # portrait working canvas (what the phone sends)
-PANEL_W, PANEL_H = 768, 552       # native landscape panel
-PANEL_ROW_BYTES = PANEL_W // 4    # 2bpp: 192 bytes per panel row
+# 几何参数 - 镜像 ble_protocol.h / config.h / epd_398_4color.h。
+CANVAS_W, CANVAS_H = 552, 768     # 竖屏工作画布（手机发送的内容）
+PANEL_W, PANEL_H = 768, 552       # 面板原生的横屏方向
+PANEL_ROW_BYTES = PANEL_W // 4    # 2bpp：每个面板行 192 字节
 PANEL_BYTES = PANEL_W * PANEL_H // 4
 
-# Colour codes - mirrors epd_398_4color.h and the phone's 2bpp format.
+# 颜色代码 - 镜像 epd_398_4color.h 和手机的 2bpp 格式。
 BLACK, WHITE, YELLOW, RED = 0, 1, 2, 3
 RGB = {
     BLACK:  (0, 0, 0),
     WHITE:  (255, 255, 255),
-    YELLOW: (232, 176, 0),   # the panel's yellow, as the phone encodes index 2
+    YELLOW: (232, 176, 0),   # 面板的黄色，即手机编码的索引 2
     RED:    (200, 0, 0),
 }
 
-# The three lines - mirrors ble_screen.cpp.
+# 那三行文字 - 镜像 ble_screen.cpp。
 HINT_TITLE = "请使用蓝牙连接："
 HINT_FOOTER = "打开手机App搜索并连接"
 
-# Also mirrors ble_screen.cpp - which generated size each line is drawn at.
+# 同样镜像 ble_screen.cpp - 每一行用哪个生成的字号来绘制。
 TITLE_SIZE, NAME_SIZE, FOOTER_SIZE = 48, 56, 28
 SIZES = (28, 48, 56)
 
-# Fallbacks for the values normally scraped out of src/config.h.
+# 通常从 src/config.h 里抓取的那些值的兜底默认值。
 RING_THICKNESS = 24
 RING_BLOCKS = 24
 RING_KEYLINE = 3
@@ -75,7 +74,7 @@ GLYPH_RE = re.compile(
 
 
 def scrape_config(src_dir: str) -> None:
-    """Pull the ring geometry out of config.h so the preview cannot drift."""
+    """从 config.h 中抓取圆环几何参数，这样预览就不会漂移。"""
     global RING_THICKNESS, RING_BLOCKS, RING_KEYLINE
     path = os.path.join(src_dir, "config.h")
     if not os.path.isfile(path):
@@ -90,8 +89,8 @@ def scrape_config(src_dir: str) -> None:
 def parse_font(path: str, size: int) -> dict:
     text = open(path, encoding="utf-8").read()
 
-    # Slice out this size's array first: the file holds several sizes back to
-    # back and a bare regex over the whole file would mix their glyphs together.
+    # 先把这个字号的数组切出来：文件里好几个字号是背靠背
+        # 排列的，只用一条正则在整份文件上匹配会把它们的字形混在一起。
     glyph_block_m = re.search(rf"GLYPHS_{size}\[\]\s*=\s*\{{(.*?)\}};", text, re.S)
     if not glyph_block_m:
         sys.exit(f"cannot find GLYPHS_{size} in {path}")
@@ -124,15 +123,15 @@ def parse_font(path: str, size: int) -> dict:
 
 
 class Frame:
-    """The panel framebuffer, with canvas coordinates written through the rotation."""
+    """面板帧缓冲，画布坐标的写入要经过旋转。"""
 
     def __init__(self, rotation: int) -> None:
         self.rotation = rotation
-        self.buf = bytearray([0x55]) * PANEL_BYTES   # every pixel white
+        self.buf = bytearray([0x55]) * PANEL_BYTES   # 每个像素都是白色
 
     def _map(self, x: int, y: int) -> tuple[int, int]:
-        # 180 is deliberately absent - see ble_geometry.h: a 180 degree turn
-        # leaves the bitmap 552x768 and it cannot cover a 768x552 panel.
+        # 这里刻意没有 180 - 见 ble_geometry.h：旋转 180 度
+                # 后位图仍是 552x768，无法覆盖 768x552 的面板。
         if self.rotation == 90:
             return (CANVAS_H - 1) - y, x
         return y, (CANVAS_W - 1) - x   # 270
@@ -158,7 +157,7 @@ class Frame:
             for px in range(x, x + w):
                 self.set_canvas(px, py, color)
 
-    # --- the ring, mirroring drawRing()/drawRingRun() -------------------
+    # --- 圆环，镜像 drawRing()/drawRingRun() ---------------------------
     def draw_ring_run(self, x, y, dx, dy, length, cross_dx, cross_dy, color) -> None:
         for i in range(length):
             bx, by = x + dx * i, y + dy * i
@@ -174,7 +173,7 @@ class Frame:
         runs = [
             (0,            0,                1,  0, h_len, 0,  1),
             (CANVAS_W - t, t,                0,  1, v_len, 1,  0),
-            # Start on the last row: the band grows upwards from y=CANVAS_H-1.
+            # 从最后一行开始：色带从 y=CANVAS_H-1 向上生长。
             (CANVAS_W - 1, CANVAS_H - 1,    -1,  0, h_len, 0, -1),
             (0,            CANVAS_H - t - 1, 0, -1, v_len, 1,  0),
         ]
@@ -205,7 +204,7 @@ class Frame:
         self.fill_canvas_rect(t, t, k, h, BLACK)
         self.fill_canvas_rect(CANVAS_W - t - k, t, k, h, BLACK)
 
-    # --- text ----------------------------------------------------------
+    # --- 文字 ----------------------------------------------------------
     def draw_text(self, font: dict, s: str, x: int, baseline: int, color: int,
                   missing: set) -> None:
         glyphs = font["glyphs"]
@@ -237,7 +236,7 @@ def text_width(font: dict, s: str) -> int:
 
 
 def ring_path() -> list[tuple[int, int]]:
-    """The centre-free path the ring colouring walks - mirrors drawRing()."""
+    """圆环着色所走的、避开中心的路径 - 镜像 drawRing()。"""
     t = RING_THICKNESS
     path: list[tuple[int, int]] = []
     path += [(x, 0) for x in range(CANVAS_W)]
@@ -263,8 +262,8 @@ def main() -> int:
     args = ap.parse_args()
 
     scrape_config(args.src)
-    # The overrides have to land before any Frame is built, since draw_ring()
-    # reads these module globals directly.
+    # 这些覆盖值必须在任何 Frame 构造之前生效，因为 draw_ring()
+        # 会直接读取这些模块级全局变量。
     if args.ring_blocks:
         globals()["RING_BLOCKS"] = args.ring_blocks
         print(f"ring blocks overridden -> {RING_BLOCKS}")
@@ -279,7 +278,7 @@ def main() -> int:
     frame = Frame(args.rotation)
     missing: set = set()
 
-    # --- mirrors ble_screen.cpp::bleScreenShowHint() ---
+    # --- 镜像 ble_screen.cpp::bleScreenShowHint() ---
     frame.draw_ring()
     frame.draw_keyline()
 
@@ -297,7 +296,7 @@ def main() -> int:
     if missing:
         print("!! missing glyphs: " + " ".join(f"U+{cp:04X}({chr(cp)})" for cp in sorted(missing)))
 
-    # --- report the things that actually go wrong ---
+    # --- 报告那些真正容易出错的地方 ---
     usable = CANVAS_W - 2 * inner_top
     print(f"canvas {CANVAS_W}x{CANVAS_H}, ring {RING_THICKNESS} px, keyline {RING_KEYLINE} px")
     print(f"interior {usable} px wide, text column {inner_top}..{inner_bot} vertically, "
@@ -314,7 +313,7 @@ def main() -> int:
         print(f"{label:6s} {size:2d}px width {w:4d} px (fits {usable}: {fits_w}), "
               f"y {y - half}..{y + half} (inside {inner_top}..{inner_bot}: {fits_y})")
 
-    # --- colour census, and check the ring really is a closed loop ---
+    # --- 颜色普查，并检查圆环确实是一个闭合回路 ---
     counts = {BLACK: 0, WHITE: 0, YELLOW: 0, RED: 0}
     for y in range(CANVAS_H):
         for x in range(CANVAS_W):
@@ -332,8 +331,8 @@ def main() -> int:
     if transitions != RING_BLOCKS:
         print("!! the colour cycle is not continuous around the ring")
 
-    # The ring must enclose the whole canvas: walk each row/column and check the
-    # outermost non-interior pixel is part of the border band.
+    # 圆环必须包住整张画布：逐行/逐列遍历，检查
+        # 最外侧的非内部像素属于边带。
     bad = 0
     for y in range(CANVAS_H):
         for x in range(CANVAS_W):
@@ -341,7 +340,7 @@ def main() -> int:
                         x >= CANVAS_W - RING_THICKNESS or y >= CANVAS_H - RING_THICKNESS
             if on_border:
                 continue
-            # inside the interior, only black text may appear
+            # 在内部区域里，只允许出现黑色文字
             c = frame.get_canvas(x, y)
             if c not in (WHITE, BLACK):
                 bad += 1
@@ -356,7 +355,7 @@ def main() -> int:
     img.save(args.out)
     print(f"wrote {args.out} ({img.size[0]}x{img.size[1]})")
 
-    # Also write what the panel itself holds, so the rotation can be eyeballed.
+    # 同时写出面板本身所持有的内容，这样可以肉眼核对旋转。
     panel = Image.new("RGB", (PANEL_W, PANEL_H))
     panel.putdata([RGB[frame.get_panel(x, y)] for y in range(PANEL_H) for x in range(PANEL_W)])
     panel_path = os.path.splitext(args.out)[0] + "_panel.png"

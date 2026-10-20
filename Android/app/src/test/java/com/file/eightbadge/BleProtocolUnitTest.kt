@@ -70,21 +70,21 @@ class BleProtocolUnitTest {
 
         val raw = byteArrayOf(
             0x81.toByte(), 0x2A.toByte(), 0x00.toByte(), payloadLen.toByte(),
-            0x03, 0x01, 0x02, 0x00, // proto=3, fw=1.2.0
-            0x28, 0x02, 0x00, 0x03, // canvasW=552, canvasH=768
-            0x00, 0x03, 0x28, 0x02, // panelW=768, panelH=552
-            0x02, 0x04, 0x00, 0x01, 0x02, 0x03, // bpp=2, colors=4, {0,1,2,3}
-            0x00, 0x9E.toByte(), 0x01, 0x00,    // len2bpp = 105984
-            0x00, 0xCF.toByte(), 0x00, 0x00,    // len1bpp = 52992
-            0x05, 0x02, // mtu=517
-            0x00, 0x02, // chunkSize=512
-            0x20, 0x00, // windowChunks=32
-            0x5A,       // rotation=90
-            0x0B,       // blockShiftMin=11
-            0x0E,       // blockShiftMax=14
-            0x80.toByte(), // maxBlocks=128
+            0x03, 0x01, 0x02, 0x00, // 协议版本 proto=3，固件版本 fw=1.2.0
+            0x28, 0x02, 0x00, 0x03, // 画布宽 canvasW=552，画布高 canvasH=768
+            0x00, 0x03, 0x28, 0x02, // 面板宽 panelW=768，面板高 panelH=552
+            0x02, 0x04, 0x00, 0x01, 0x02, 0x03, // bpp=2，颜色数 colors=4，{0,1,2,3}
+            0x00, 0x9E.toByte(), 0x01, 0x00,    // 2bpp 数据长度 len2bpp = 105984
+            0x00, 0xCF.toByte(), 0x00, 0x00,    // 1bpp 数据长度 len1bpp = 52992
+            0x05, 0x02, // MTU 大小 mtu=517
+            0x00, 0x02, // 分片大小 chunkSize=512
+            0x20, 0x00, // 窗口分片数 windowChunks=32
+            0x5A,       // 旋转 rotation=90
+            0x0B,       // 块位移最小值 blockShiftMin=11
+            0x0E,       // 块位移最大值 blockShiftMax=14
+            0x80.toByte(), // 最大块数 maxBlocks=128
             nameBytes.size.toByte()
-        ) + nameBytes + byteArrayOf(0xB4.toByte(), 0x00) // refresh_min_gap_s = 180
+        ) + nameBytes + byteArrayOf(0xB4.toByte(), 0x00) // 刷屏最小间隔秒数 refresh_min_gap_s = 180
 
         val parsed = BleProtocol.parseControlFrame(raw)
         assertTrue(parsed is BleProtocol.ControlFrame.GetInfoResponse)
@@ -107,14 +107,14 @@ class BleProtocolUnitTest {
     @Test
     fun testParseRefreshBlockedEvent() {
         val raw = byteArrayOf(
-            0xC3.toByte(), 0x00.toByte(), 0x00.toByte(), 0x0C.toByte(), // EVT_REFRESH_BLOCKED, len=12
-            0x07,                            // token = 7
+            0xC3.toByte(), 0x00.toByte(), 0x00.toByte(), 0x0C.toByte(), // EVT_REFRESH_BLOCKED，长度 len=12
+            0x07,                            // token = 7，令牌
             0x01,                            // reason = 1 (有时钟)
-            0x02,                            // for_opcode = 2 (BEGIN_IMAGE)
-            0x00,                            // reserved
-            0x85.toByte(), 0x00,             // wait_seconds = 133
-            0xB4.toByte(), 0x00,             // min_gap_seconds = 180
-            0x2F, 0x00, 0x00, 0x00           // elapsed_seconds = 47
+            0x02,                            // for_opcode = 2，对应 BEGIN_IMAGE
+            0x00,                            // reserved，保留
+            0x85.toByte(), 0x00,             // wait_seconds = 133，还需等待秒数
+            0xB4.toByte(), 0x00,             // min_gap_seconds = 180，最小间隔秒数
+            0x2F, 0x00, 0x00, 0x00           // elapsed_seconds = 47，距上次刷屏秒数
         )
 
         val parsed = BleProtocol.parseControlFrame(raw)
@@ -130,22 +130,22 @@ class BleProtocolUnitTest {
 
     @Test
     fun testProtocol1bppAnd2bppCrc32Vectors() {
-        // 1bpp All-White 52,992 bytes of 0xFF -> 0xFC2E8495
+        // 1bpp 全白 52,992 字节的 0xFF -> 0xFC2E8495
         val allWhite1bpp = ByteArray(52992) { 0xFF.toByte() }
         val crcWhite1bpp = com.file.eightbadge.image.ImageProcessor.calculateCrc32(allWhite1bpp)
         assertEquals(0xFC2E8495L, crcWhite1bpp)
 
-        // 1bpp All-Black 52,992 bytes of 0x00 -> 0x2F809144
+        // 1bpp 全黑 52,992 字节的 0x00 -> 0x2F809144
         val allBlack1bpp = ByteArray(52992) { 0x00.toByte() }
         val crcBlack1bpp = com.file.eightbadge.image.ImageProcessor.calculateCrc32(allBlack1bpp)
         assertEquals(0x2F809144L, crcBlack1bpp)
 
-        // 2bpp All-White 105,984 bytes of 0x55 -> 0xC6FD3AF0
+        // 2bpp 全白 105,984 字节的 0x55 -> 0xC6FD3AF0
         val allWhite2bpp = ByteArray(105984) { 0x55.toByte() }
         val crcWhite2bpp = com.file.eightbadge.image.ImageProcessor.calculateCrc32(allWhite2bpp)
         assertEquals(0xC6FD3AF0L, crcWhite2bpp)
 
-        // 2bpp All-Black 105,984 bytes of 0x00 -> 0x2D69E75C
+        // 2bpp 全黑 105,984 字节的 0x00 -> 0x2D69E75C
         val allBlack2bpp = ByteArray(105984) { 0x00.toByte() }
         val crcBlack2bpp = com.file.eightbadge.image.ImageProcessor.calculateCrc32(allBlack2bpp)
         assertEquals(0x2D69E75CL, crcBlack2bpp)
@@ -154,12 +154,12 @@ class BleProtocolUnitTest {
     @Test
     fun testParseErrBlocksEndImageResponse() {
         val raw = byteArrayOf(
-            0x83.toByte(), 0x2C.toByte(), 0x0C.toByte(), 0x0E.toByte(), // opcode=83, seq=2C, status=0C, len=14
-            0x5C, 0xE7.toByte(), 0x69, 0x2D, // actualCrc = 0x2D69E75C
-            0x00, 0x9E.toByte(), 0x01, 0x00, // received = 105984
-            0x1A,                            // blockCount = 26
-            0x02,                            // badCount = 2
-            0x0A.toByte(), 0x00, 0x00, 0x00  // bitmap
+            0x83.toByte(), 0x2C.toByte(), 0x0C.toByte(), 0x0E.toByte(), // opcode=83，seq=2C，status=0C，长度 len=14
+            0x5C, 0xE7.toByte(), 0x69, 0x2D, // actualCrc，实际 CRC = 0x2D69E75C
+            0x00, 0x9E.toByte(), 0x01, 0x00, // received，已接收字节数 = 105984
+            0x1A,                            // blockCount，块数 = 26
+            0x02,                            // badCount，错误块数 = 2
+            0x0A.toByte(), 0x00, 0x00, 0x00  // bitmap，错误块位图
         )
 
         val parsed = BleProtocol.parseControlFrame(raw)

@@ -1,32 +1,30 @@
 // ============================================================================
-//  3.98" 4-color e-paper driver - A1 panel (768x552, black/white/red/yellow).
+//  3.98 英寸 4 色墨水屏驱动 - A1 面板（768x552，黑/白/红/黄）。
 //
-//  The panel's gate lines are wired in two interleaved groups, so image row r
-//  lives at gate address 2*r (r <= 299) or 2*r - 599 (r >= 300) inside a 600-line
-//  controller address space. 0x61 must therefore report VRES = 600. With 552 the
-//  controller cannot reach the gates carrying image rows 276..299 and the picture
-//  comes out cut in half at the middle. See the header for the full reasoning.
+//  面板的栅极线按两组交错接线，因此图像第 r 行位于控制器 600 线地址空间内的
+//  栅极地址 2*r（r <= 299）或 2*r - 599（r >= 300）。所以 0x61 必须上报
+//  VRES = 600。若为 552，控制器就无法到达承载图像第 276..299 行的栅极，
+//  画面会从中间被切成两半。完整推理见头文件。
 //
-//  The register sequence is the open-source JD79665 one from
-//  github.com/krstc/InkSight_adapt_HUAWEI_eink (MIT), which is what removes the
-//  darker band the vendor firmware's "LUT from OTP" sequence produced across
-//  image rows 252..299. Its reset and its 0x12 <- 0x00 are kept; its VRES = 552
-//  is NOT (that is the value that leaves 24 rows undriven).
+//  寄存器序列是来自
+//  github.com/krstc/InkSight_adapt_HUAWEI_eink（MIT）的开源 JD79665 那一套，
+//  正是它消除了厂商固件那套「LUT from OTP」序列在图像第 252..299 行上造成的
+//  暗带。它的复位和它的 0x12 <- 0x00 被保留；它的 VRES = 552 没有保留
+//  （正是那个值让 24 行得不到驱动）。
 //
-//  This file is the single-path final version: no build-time switches, because
-//  every alternative was measured and is worse (see the header for the list).
+//  本文件是单路径最终版：没有编译期开关，因为每种替代方案都实测过，而且都
+//  更差（清单见头文件）。
 // ============================================================================
 
-// When built inside the 8adge project, pick up the board pin definitions
-// from config.h so the driver follows the project's wiring macros instead of
-// the built-in defaults.
+// 在 8adge 工程内构建时，从 config.h 取走板级引脚定义，
+// 让驱动遵循工程的接线宏，而不是内建默认值。
 #if defined(__has_include)
 #  if __has_include("config.h")
 #    include "config.h"
 #  endif
-// The status LED lives in led.h in the 8adge project. Guarded like config.h
-// so this driver can still be dropped into a standalone sketch, where there is
-// no LED module and the waits fall back to a plain delay().
+// 在 8adge 工程里状态 LED 位于 led.h。这里和 config.h 一样做了保护，
+// 这样本驱动仍可直接放进一个独立 sketch，那里没有 LED 模块，等待就退回
+// 普通的 delay()。
 #  if __has_include("led.h")
 #    include "led.h"
 #    define EPD398_HAS_LED 1
@@ -39,9 +37,8 @@
 
 #include "epd_398_4color.h"
 
-// Wait helper for the long panel waits. A refresh holds the caller for tens of
-// seconds; with the LED module present this keeps the status LED blinking
-// through it instead of freezing on whatever state it was left in.
+// 长时间面板等待用的等待辅助函数。一次刷屏会把调用方占住几十秒；存在 LED
+// 模块时，它能让状态 LED 在这期间持续闪烁，而不是冻结在之前留下的状态上。
 static void epd398WaitTick(unsigned long ms) {
 #if EPD398_HAS_LED
     ledDelay(ms);
@@ -56,20 +53,19 @@ static void epd398WaitTick(unsigned long ms) {
 #define EPD398_LOG(...) do {} while (0)
 #endif
 
-// Result of the most recent full display operation, so callers can tell a real
-// refresh from a panel that never answered. See epd398LastOperationOk().
+// 最近一次完整显示操作的结果，让调用方可以区分真实刷屏和一直不应答的面板。
+// 见 epd398LastOperationOk()。
 static bool s_lastOperationOk = false;
 
-// The pins are configured on first use, so this driver is safe to call without
-// the host doing epd398GpioInit() first (the 8adge project delays that until
-// the first paint on purpose). ensureGpio() is what every public entry point
-// calls; it is only a pin configuration, so it never disturbs the panel.
+// 引脚在首次使用时才配置，所以即使宿主没有先调用 epd398GpioInit()，本驱动
+// 也可以安全调用（8adge 工程有意把它推迟到第一次绘制时）。每个公开入口
+// 都会调用 ensureGpio()；它只是配置引脚，因此绝不会打扰面板。
 static bool s_gpioReady = false;
 static void ensureGpio();
 
-// ---------------------------------------------------------------- SPI layer
-// Bit-banged 4-wire SPI. MSB first, MOSI is set up before SCK rises, SCK idles
-// low. Verified against the vendor's spiWriteByte at 0x42000FF4.
+// ---------------------------------------------------------------- SPI 层
+// 软件模拟的 4 线 SPI。MSB 在前，MOSI 在 SCK 上升前就绪，SCK 空闲为低。
+// 已对照厂商在 0x42000FF4 处的 spiWriteByte 验证。
 static void epd398SpiWriteByte(uint8_t data) {
     for (int i = 0; i < 8; i++) {
         digitalWrite(PIN_EPD_MOSI, (data >> 7) & 0x01);
@@ -80,25 +76,25 @@ static void epd398SpiWriteByte(uint8_t data) {
 }
 
 static void epd398SendCommand(uint8_t cmd) {
-    digitalWrite(PIN_EPD_DC, LOW);      // DC low  = command
+    digitalWrite(PIN_EPD_DC, LOW);      // DC 低 = 命令
     digitalWrite(PIN_EPD_CS, LOW);
     epd398SpiWriteByte(cmd);
     digitalWrite(PIN_EPD_CS, HIGH);
 }
 
 static void epd398SendData(uint8_t dat) {
-    digitalWrite(PIN_EPD_DC, HIGH);     // DC high = data
+    digitalWrite(PIN_EPD_DC, HIGH);     // DC 高 = 数据
     digitalWrite(PIN_EPD_CS, LOW);
     epd398SpiWriteByte(dat);
     digitalWrite(PIN_EPD_CS, HIGH);
 }
 
-// ---------------------------------------------------------------- BUSY wait
-// BUSY is active LOW: wait until it goes HIGH. Returns true when the panel
-// released BUSY, false on timeout.
+// ---------------------------------------------------------------- BUSY 等待
+// BUSY 低电平有效：等到它变为高电平。面板释放 BUSY 时返回 true，
+// 超时返回 false。
 //
-// Uses epd398WaitTick() rather than delay() so the status LED keeps blinking
-// while the panel is busy - a refresh holds this loop for tens of seconds.
+// 使用 epd398WaitTick() 而不是 delay()，这样面板忙时状态 LED 会继续闪烁 -
+// 一次刷屏会让这个循环持续几十秒。
 bool epd398WaitBusyTimed(unsigned long timeoutMs) {
     ensureGpio();
     unsigned long t0 = millis();
@@ -116,7 +112,7 @@ void epd398WaitBusy(unsigned long timeoutMs) {
     (void)epd398WaitBusyTimed(timeoutMs);
 }
 
-// ---------------------------------------------------------------- GPIO init
+// ---------------------------------------------------------------- GPIO 初始化
 void epd398GpioInit() {
     pinMode(PIN_EPD_BUSY, INPUT);
     pinMode(PIN_EPD_RST,  OUTPUT);
@@ -130,54 +126,49 @@ void epd398GpioInit() {
     s_gpioReady = true;
 }
 
-// Configure the pins if the host has not (or has not yet). EVERY public entry
-// point calls this: the header promises a driver that is safe to use on its own,
-// and epd398Init()/epd398Upload2bpp() write RST/DC/CS immediately. It only sets
-// pin directions (RST is left HIGH), so it cannot disturb the panel - which is
-// what lets the host defer it to the first paint.
+// 如果宿主没有（或还没有）配置引脚，就配置它们。每一个公开入口点都会调用
+// 它：头文件承诺这是个可以独立使用的驱动，而 epd398Init()/epd398Upload2bpp()
+// 会立刻写 RST/DC/CS。它只设置引脚方向（RST 保持高电平），所以不会打扰面板 -
+// 这正是宿主可以把它推迟到第一次绘制的原因。
 static void ensureGpio() {
     if (!s_gpioReady) epd398GpioInit();
 }
 
-// ---------------------------------------------------------------- window
-// Command 0x83 takes 9 data bytes:
+// ---------------------------------------------------------------- 窗口
+// 命令 0x83 接收 9 个数据字节：
 //   x_start(2) x_end(2) y_start(2) y_end(2) flag
-// Only the full-screen window is used: one 0x10 burst writes the whole frame, and
-// the controller walks its 600-line gate space in the interleaved order on its
-// own, so no per-row windows are needed.
+// 只使用全屏窗口：一次 0x10 burst 写入整帧，控制器会自行按交错顺序走过它的
+// 600 线栅极空间，因此不需要逐行窗口。
 //
-// Careful reading of the two statements above, because they look contradictory:
-// the "2*r / 2*r-599" table in the header says where a *panel* row's gate sits in
-// the controller's address space, while the burst writes *image* rows one after
-// another through this window. They are consistent only because the controller's
-// own line counter for a 0x10 burst already walks the two interleaved groups in
-// the order the framebuffer holds them - which is exactly why VRES must be 600
-// here (a 552-line space would stop driving the gates of image rows 276..299) and
-// why replacing this with 552 single-row 0x83 windows or VRES = 552 reproduces
-// the half-picture/stretched failure modes listed in the header. This mapping was
-// measured on the A1 panel; if the register sequence is ever changed, re-measure
-// before trusting it.
+// 请仔细读上面这两句话，因为它们看起来矛盾：头文件里的「2*r / 2*r-599」表
+// 说的是*面板*某行的栅极位于控制器地址空间的哪里，而 burst 是通过这个窗口
+// 一个接一个地写入*图像*行。二者只有在下述条件下才一致：控制器自己为 0x10
+// burst 服务的行计数器本来就是按帧缓冲存放的顺序走过这两组交错的栅极 - 这
+// 正是这里 VRES 必须为 600 的原因（552 线的空间会停止驱动图像第 276..299 行
+// 的栅极），也是把它换成 552 个单行 0x83 窗口或 VRES = 552 就会重现头文件里
+// 列出的半幅/拉伸故障模式的原因。该映射是在 A1 面板上实测的；如果以后改动
+// 寄存器序列，请先重新实测再信任它。
 static void epd398SetWindow(uint16_t y0, uint16_t y1) {
     epd398SendCommand(0x83);
-    epd398SendData(0x00); epd398SendData(0x00);          // x start = 0
-    epd398SendData(0x02); epd398SendData(0xFF);          // x end   = 767
+    epd398SendData(0x00); epd398SendData(0x00);          // x 起点 = 0
+    epd398SendData(0x02); epd398SendData(0xFF);          // x 终点 = 767
     epd398SendData((uint8_t)(y0 >> 8)); epd398SendData((uint8_t)y0);
     epd398SendData((uint8_t)(y1 >> 8)); epd398SendData((uint8_t)y1);
     epd398SendData(0x01);
 }
 
-// Restore the full controller window (0..767 x 0..VRES-1). The 0x10 burst is
-// written through this window.
+// 恢复控制器的全窗口（0..767 x 0..VRES-1）。0x10 burst 就是通过这个窗口
+// 写入的。
 static void epd398SetFullWindow() {
     epd398SetWindow(0, EPD398_VRES - 1);
 }
 
-// ---------------------------------------------------------------- init
-// 0x61 resolution setting. VRES is the controller's gate address space, which is
-// 600 - not the panel height (552). See the addressing note in the header: a
-// 552-line space cannot reach the gates that carry image rows 276..299.
+// ---------------------------------------------------------------- 初始化
+// 0x61 分辨率设置。VRES 是控制器的栅极地址空间，即 600 - 不是面板高度
+// （552）。见头文件里的寻址说明：552 线的空间无法到达承载图像第 276..299 行
+// 的栅极。
 static void epd398SendResolution() {
-    epd398SendCommand(0x61);                 // resolution setting
+    epd398SendCommand(0x61);                 // 分辨率设置
     epd398SendData((uint8_t)(EPD398_WIDTH >> 8));
     epd398SendData((uint8_t)(EPD398_WIDTH & 0xFF));    // HRES = 0x0300 = 768
     epd398SendData((uint8_t)(EPD398_VRES >> 8));
@@ -186,13 +177,12 @@ static void epd398SendResolution() {
 
 void epd398Init() {
     ensureGpio();
-    // ---- JD79665 register sequence (krstc/InkSight_adapt_HUAWEI_eink, MIT) ----
-        // Taken from the reference driver's firmware/src/epd_driver.cpp, with
-    // one change: 0x61 gets VRES = 600 instead of the reference's 552, because
-    // the reference's own value leaves image rows 276..299 undriven on this
-    // panel. Everything else is reproduced as the reference has it - including
-    // the reset (line high, then a 2 ms LOW pulse), which differs from the
-    // vendor firmware's opposite order with much longer delays.
+    // ---- JD79665 寄存器序列（krstc/InkSight_adapt_HUAWEI_eink, MIT）----
+        // 取自参考驱动的 firmware/src/epd_driver.cpp，只改了一处：
+    // 0x61 的 VRES 设为 600 而不是参考版的 552，因为参考版自己的取值会让图像
+    // 第 276..299 行在这块面板上得不到驱动。其余全部按参考版原样复现 -
+    // 包括复位（线拉高，然后 2 ms 低电平脉冲），它与厂商固件相反的顺序和长得
+    // 多的延时不同。
     digitalWrite(PIN_EPD_RST, HIGH); delay(20);
     digitalWrite(PIN_EPD_RST, LOW);  delay(2);
     digitalWrite(PIN_EPD_RST, HIGH); delay(20);
@@ -200,7 +190,7 @@ void epd398Init() {
     epd398WaitBusy(EPD398_RESET_WAIT_MS);
     delay(30);
 
-    epd398SendCommand(0xAA);                 // CMDH / panel-specific setup
+    epd398SendCommand(0xAA);                 // CMDH / 面板专用设置
     epd398SendData(0x49);
     epd398SendData(0x55);
     epd398SendData(0x20);
@@ -208,20 +198,20 @@ void epd398Init() {
     epd398SendData(0x09);
     epd398SendData(0x18);
 
-    epd398SendCommand(0x01);                 // power setting
+    epd398SendCommand(0x01);                 // 电源设置
     epd398SendData(0x3F);
 
-    epd398SendCommand(0x00);                 // panel setting (PSR)
+    epd398SendCommand(0x00);                 // 面板设置（PSR）
     epd398SendData(0x4B);
     epd398SendData(0x69);
 
-    epd398SendCommand(0x05);                 // booster soft start
+    epd398SendCommand(0x05);                 // 升压软启动
     epd398SendData(0x40);
     epd398SendData(0x1F);
     epd398SendData(0x1F);
     epd398SendData(0x2C);
 
-    epd398SendCommand(0x08);                 // VCOM DC setting
+    epd398SendCommand(0x08);                 // VCOM 直流设置
     epd398SendData(0x6F);
     epd398SendData(0x1F);
     epd398SendData(0x1F);
@@ -234,23 +224,23 @@ void epd398Init() {
     epd398SendData(0x14);
     epd398SendData(0x14);
 
-    epd398SendCommand(0x03);                 // VCOM / data interval (VDCS)
+    epd398SendCommand(0x03);                 // VCOM / 数据间隔（VDCS）
     epd398SendData(0x00);
     epd398SendData(0x54);
     epd398SendData(0x00);
     epd398SendData(0x44);
 
-    epd398SendCommand(0x60);                 // TCON setting
+    epd398SendCommand(0x60);                 // TCON 设置
     epd398SendData(0x02);
     epd398SendData(0x00);
 
-    epd398SendCommand(0x30);                 // PLL control
+    epd398SendCommand(0x30);                 // PLL 控制
     epd398SendData(0x08);
 
-    epd398SendCommand(0x50);                 // VCOM and data interval setting
+    epd398SendCommand(0x50);                 // VCOM 与数据间隔设置
     epd398SendData(0x3F);
 
-    epd398SendResolution();                  // 768 x 600 (reference: 768 x 552)
+    epd398SendResolution();                  // 768 x 600（参考版：768 x 552）
 
     epd398SendCommand(0x65);                 // GSST
     epd398SendData(0x10);
@@ -258,25 +248,24 @@ void epd398Init() {
     epd398SendData(0x20);
     epd398SendData(0x00);
 
-    epd398SendCommand(0xE3);                 // power saving
+    epd398SendCommand(0xE3);                 // 省电
     epd398SendData(0x2F);
 
-    epd398SendCommand(0x84);                 // VCOM and data interval (2nd)
+    epd398SendCommand(0x84);                 // VCOM 与数据间隔（第 2 处）
     epd398SendData(0x01);
 
-    epd398SetFullWindow();                   // 0x83, 0..767 x 0..599
-    epd398SendCommand(0x04);                 // power ON
+    epd398SetFullWindow();                   // 0x83，0..767 x 0..599
+    epd398SendCommand(0x04);                 // 电源开
     epd398WaitBusy(EPD398_BUSY_TIMEOUT_MS);
 
     EPD398_LOG("[EPD398] init done (VRES=%d, BUSY=%d)\n",
                (int)EPD398_VRES, digitalRead(PIN_EPD_BUSY));
 }
 
-// ---------------------------------------------------------------- upload
-// 2bpp framebuffer -> controller RAM, as one 0x10 burst through the full-screen
-// window. The controller walks its 600-line gate space in the interleaved order,
-// so framebuffer order (image rows 0..551) lands on the right gates without the
-// driver issuing 552 single-row 0x83 windows.
+    // ---------------------------------------------------------------- 上传
+    // 2bpp 帧缓冲 -> 控制器 RAM，以一次贯穿全屏窗口的 0x10 burst 完成。控制器会按
+    // 交错顺序走过它的 600 线栅极空间，因此帧缓冲的顺序（图像第 0..551 行）会落到
+    // 正确的栅极上，驱动不必再去发 552 个单行的 0x83 窗口。
 void epd398Upload2bpp(const uint8_t *colorBuf) {
     if (!colorBuf) {
         EPD398_LOG("[EPD398] upload skipped: null framebuffer\n");
@@ -284,17 +273,17 @@ void epd398Upload2bpp(const uint8_t *colorBuf) {
     }
     ensureGpio();
 
-    epd398SendCommand(0x04);      // power ON
+    epd398SendCommand(0x04);      // 电源开
     epd398WaitBusy(EPD398_BUSY_TIMEOUT_MS);
 
     epd398SetFullWindow();
-    epd398SendCommand(0x10);              // data start transmission
+    epd398SendCommand(0x10);              // 开始传输数据
     for (int i = 0; i < EPD398_COLOR_BYTES; i++) {
         epd398SendData(colorBuf[i]);
     }
 }
 
-// ---------------------------------------------------------------- power
+    // ---------------------------------------------------------------- 电源
 void epd398PowerOff() {
     ensureGpio();
     epd398SendCommand(0x02);
@@ -309,21 +298,19 @@ void epd398Sleep() {
     delay(200);
 }
 
-// ---------------------------------------------------------------- refresh
-// Starts the display update and waits for it to actually finish.
+// ---------------------------------------------------------------- 刷屏
+// 启动显示更新并等待它真正结束。
 //
-// The important detail: BUSY on this panel can return HIGH well before the
-// waveform has completed. Trusting it alone means powering the panel off in the
-// middle of a refresh, which leaves the screen blank. A release in under
-// EPD398_BUSY_EARLY_MS is therefore treated as "not finished" and replaced by a
-// fixed EPD398_REFRESH_FALLBACK_MS wait.
+// 关键细节：这块面板的 BUSY 可能在波形完成之前很早就回到高电平。只信它就意味着
+// 在刷屏中途给面板断电，屏幕会一片空白。因此少于 EPD398_BUSY_EARLY_MS 的释放
+// 会被当成「尚未结束」，并替换为一段固定的 EPD398_REFRESH_FALLBACK_MS 等待。
 static bool epd398RefreshPanel() {
-    // Re-arm the full window, as the reference driver does before its refresh.
-    // epd398Upload2bpp() already left it at 0..599, so this is a no-op in
-    // practice - kept because the sequence is otherwise reproduced verbatim.
+    // 按参考驱动在刷屏前的做法，重新装载全窗口。epd398Upload2bpp() 已经把它
+    // 留在 0..599，所以实际上这是个空操作 - 保留它是因为序列其余部分都按
+    // 参考版逐字复现。
     epd398SetFullWindow();
 
-    epd398SendCommand(0x12);                 // display refresh
+    epd398SendCommand(0x12);                 // 显示刷屏
     epd398SendData(EPD398_REFRESH_MODE);
 
     EPD398_LOG("[EPD398] refresh 0x12 <- 0x%02X\n", (unsigned)EPD398_REFRESH_MODE);
@@ -337,7 +324,7 @@ static bool epd398RefreshPanel() {
         return false;
     }
     if (elapsed < EPD398_BUSY_EARLY_MS) {
-        // BUSY came back far too quickly for a real refresh: wait it out.
+        // BUSY 回来得太快，不可能是真实刷屏：把它等完。
         EPD398_LOG("[EPD398] BUSY only %lums -> fallback wait %lums\n",
                    elapsed, (unsigned long)EPD398_REFRESH_FALLBACK_MS);
         epd398WaitTick(EPD398_REFRESH_FALLBACK_MS);
@@ -347,7 +334,7 @@ static bool epd398RefreshPanel() {
     return true;
 }
 
-// ---------------------------------------------------------------- top level
+// ---------------------------------------------------------------- 顶层
 void epd398Display2bpp(const uint8_t *colorBuf) {
     if (!colorBuf) {
         EPD398_LOG("[EPD398] display skipped: null framebuffer\n");
@@ -377,7 +364,7 @@ bool epd398LastOperationOk() {
 }
 
 // ============================================================================
-//  Framebuffer helpers
+//  帧缓冲辅助函数
 // ============================================================================
 
 uint8_t *epd398AllocBuffer() {
@@ -396,12 +383,12 @@ void epd398FreeBuffer(uint8_t *buf) {
     }
 }
 
-// 2bpp packing: 4 pixels per byte, most significant pair = leftmost pixel.
+// 2bpp 打包：每字节 4 个像素，最高位那对 = 最左边的像素。
 void epd398Fill(uint8_t *buf, uint8_t color) {
     if (!buf) {
         return;
     }
-    uint8_t packed = (uint8_t)((color & 0x03) * 0x55);   // 0b00/01/10/11 repeated
+    uint8_t packed = (uint8_t)((color & 0x03) * 0x55);   // 0b00/01/10/11 重复
     memset(buf, packed, EPD398_COLOR_BYTES);
 }
 
@@ -435,14 +422,14 @@ void epd398TestPattern(uint8_t *buf, const uint8_t *colors, int count) {
         epd398FillRect(buf, x0, 0, x1 - x0, EPD398_HEIGHT, colors[c]);
     }
 
-    // corner markers: a 24x24 black square in each corner, to expose a wrong
-    // row mapping or a mirrored/rotated panel immediately
+    // 四角标记：每个角一个 24x24 的黑色方块，可以立刻暴露行映射错误或
+        // 镜像/旋转的面板
     epd398FillRect(buf, 0, 0, 24, 24, EPD398_BLACK);
     epd398FillRect(buf, EPD398_WIDTH - 24, 0, 24, 24, EPD398_BLACK);
     epd398FillRect(buf, 0, EPD398_HEIGHT - 24, 24, 24, EPD398_BLACK);
     epd398FillRect(buf, EPD398_WIDTH - 24, EPD398_HEIGHT - 24, 24, 24, EPD398_BLACK);
 
-    // horizontal ruler line every 50 rows
+        // 每 50 行一条水平标尺线
     for (int y = 50; y < EPD398_HEIGHT; y += 50) {
         epd398FillRect(buf, 0, y, EPD398_WIDTH, 1, EPD398_BLACK);
     }

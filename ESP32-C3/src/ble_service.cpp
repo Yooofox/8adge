@@ -1,49 +1,42 @@
 // ============================================================================
-//  BLE image transfer - protocol engine and NimBLE glue.
+//  BLE 图像传输 - 协议引擎与 NimBLE 胶合层。
 //
-//  Design notes worth keeping:
+//  值得保留的设计说明：
 //
-//  * Only the two things that cannot run here live in main.cpp: painting the
-//    panel (blocks for 15-25 s) and the 2-minute hint timer. A verified transfer
-//    therefore only raises bleTakeRenderRequest(); the paint happens in loop().
+//  * 只有两件不能在这里做的事留在 main.cpp：绘制面板（会阻塞 15-25 s）和
+//    2 分钟提示屏定时器。因此一次通过校验的传输只会置起 bleTakeRenderRequest()；
+//    真正的绘制发生在 loop() 中。
 //
-//  * DATA writes are scattered straight into the 2bpp framebuffer, so there is
-//    never a second 106 KB copy in flight. For 2bpp that is a rotation of each
-//    nibble group; for 1bpp it is an expansion into the same rotated positions
-//    (see ble_geometry.h). The mapping is per payload byte, so a chunk may begin
-//    and end anywhere and the code needs no carry state.
+//  * DATA 写入直接散落到 2bpp 帧缓冲，因此任何时候都不存在第二份 106 KB 的副本。
+//    对 2bpp 而言这是对每个半字节组做旋转；对 1bpp 而言是把位展开到同样旋转后的
+//    位置（见 ble_geometry.h）。映射以载荷字节为单位，所以一个分片可以从任意位置
+//    开始、在任意位置结束，代码无需保留跨片状态。
 //
-//  * Integrity is per *block*, not per image. The app declares one CRC32 per
-//    block up front; the device verifies each block as its bytes arrive and
-//    END_IMAGE answers with a bitmap of the ones that failed. The app then
-//    resends just those. See "why block CRCs" below.
+//  * 完整性校验以 *块* 为单位，而不是整幅图像。App 预先为每个块声明一个 CRC32；
+//    设备在块的字节到达时逐块校验，END_IMAGE 用位图回复其中失败的块。App 随后
+//    只重传这些块。见下文的"为什么用块 CRC"。
 //
-//  * The whole-image CRC is recomputed from the framebuffer at END_IMAGE rather
-//    than accumulated during reception. Reception-side verification is already
-//    covered by the block CRCs, and recomputing is what makes the reported
-//    whole-image digest honest *after* a repair - the bytes that were replaced
-//    are the ones now in the buffer, so no stale running CRC can disagree with
-//    the pixels on the glass. It costs one pass over 423936 pixels (~50 ms) out
-//    of a 15-25 s refresh.
+//  * 整幅图像 CRC 在 END_IMAGE 时从帧缓冲重新计算，而不是在接收过程中累加。
+//    接收侧的校验已由块 CRC 覆盖，而重新计算才使得上报的整幅图像摘要在
+//    *修复之后* 仍然诚实 - 被替换掉的字节就是现在位于缓冲区中的字节，因此不会有
+//    过期的滚动 CRC 与屏上的像素不一致。它的代价是对 423936 个像素遍历一遍
+//    （约 50 ms），相对于 15-25 s 的整屏刷新。
 //
-//  * CRC is the standard IEEE 802.3 / zlib CRC32 that java.util.zip.CRC32
-//    produces, computed over the payload bytes exactly as they went over the air
-//    (for 1bpp, over the packed 1bpp bytes - not the expanded 2bpp).
+//  * CRC 是标准的 IEEE 802.3 / zlib CRC32，与 java.util.zip.CRC32 产生的一致，
+//    计算对象是载荷字节在空中传输时的原样（对 1bpp，是打包后的 1bpp 字节，
+//    而不是展开后的 2bpp）。
 //
-//  ------------------------------------------------------------------ why block CRCs
+//  ------------------------------------------------------------------ 为什么用块 CRC
 //
-//  Per-packet retransmission is already handled below us: the BLE link layer
-//  acknowledges every LL packet, retransmits until acknowledged, and carries its
-//  own CRC, so a corrupted or lost packet never reaches the ATT layer. What is
-//  NOT protected is anything above that - an app-side write that returned false
-//  and was dropped, a phone that ran out of memory mid-transfer, a stack that
-//  discarded a queued write on disconnect. Those produce a *gap*, and a gap is
-//  exactly what the whole-image CRC detects but cannot localise.
+//  逐包重传在我们之下已经处理好了：BLE 链路层对每个 LL 包进行确认、未确认就
+//  重传，并自带 CRC，因此损坏或丢失的包永远不会到达 ATT 层。没有被保护的是它之上
+//  的任何环节 - App 侧的写入返回 false 而被丢弃、手机在传输途中内存耗尽、协议栈
+//  在断开时丢弃一个已排队的写入。这些都会产生一个 *空洞*，而空洞正是整幅图像 CRC
+//  能发现却无法定位的东西。
 //
-//  v1 therefore had to resend the entire 106 KB on any mismatch. At the measured
-//  9.5 kB/s that is 11 seconds to fix one lost 512-byte write. With 4 KB blocks
-//  the same repair costs 0.4 seconds, and because a block carries its own index
-//  the resend lands at the right offset no matter how the bytes around it moved.
+//  因此 v1 在任何不匹配时都必须重传整个 106 KB。按实测的 9.5 kB/s，修复一个丢失的
+//  512 字节写入需要 11 秒。使用 4 KB 的块后，同样的修复只需 0.4 秒，而且因为块自带
+//  索引，无论它周围的字节如何移动，重传都会落在正确的偏移上。
 // ============================================================================
 
 #include "ble_service.h"
@@ -60,7 +53,7 @@
 #include "epd_398_4color.h"
 #include "refresh_guard.h"
 
-// ---------------------------------------------------------------- module state
+// ---------------------------------------------------------------- 模块状态
 
 static char s_name[40] = {0};
 static uint8_t *s_frame = nullptr;
@@ -76,21 +69,19 @@ static volatile uint16_t s_mtu = 23;
 static volatile uint16_t s_connHandle = 0;
 
 static volatile bool s_renderPending = false;
-// Set while main.cpp is actually painting (15-25 s). s_renderPending alone is
-// not enough: bleTakeRenderRequest() clears it before the paint starts, so
-// without this a fast app could BEGIN the next image into the buffer that is
-// being pushed to the panel right now.
+// main.cpp 真正在绘制期间（15-25 s）置起。只有 s_renderPending 不够：
+// bleTakeRenderRequest() 在绘制开始前就清掉了它，因此没有这个标志，一个速度快的
+// App 就可能把下一幅图像的 BEGIN 写进此刻正推送到面板的缓冲区。
 static volatile bool s_rendering = false;
 static volatile uint8_t s_renderFormat = 0;
 static volatile uint32_t s_renderBytes = 0;
 static volatile bool s_hintRequested = false;
 static volatile uint8_t s_options = 0;
 
-// Transfer state. Touched from the NimBLE host task (data/control callbacks)
-// and from the Arduino loop task (timeout poll, render hand-off, hint paint).
-// A single core is NOT a substitute for locking: FreeRTOS preempts at any
-// instruction, and several of these fields form one logical unit. Every entry
-// point that touches more than one of them takes s_stateMux.
+// 传输状态。由 NimBLE 主机任务（data/control 回调）和 Arduino loop 任务
+// （超时轮询、绘制交接、提示屏绘制）访问。单核并不能替代加锁：FreeRTOS 会在任意
+// 指令处抢占，而其中若干字段构成一个逻辑整体。任何会访问其中不止一个字段的入口点
+// 都会取 s_stateMux。
 static SemaphoreHandle_t s_stateMux = nullptr;
 
 struct StateLock {
@@ -101,58 +92,55 @@ struct StateLock {
 };
 
 static volatile bool s_receiving = false;
-// millis() of the last byte/control frame that belongs to the active session,
-// used by blePollTransferTimeout() to abandon a stalled transfer.
+// 属于当前会话的最后一个字节/控制帧的 millis()，blePollTransferTimeout()
+// 用它放弃一个卡住的传输。
 static volatile uint32_t s_lastRxMs = 0;
-// False between BEGIN_IMAGE and the first DATA byte, so the much longer
-// BLE_BEGIN_TIMEOUT_MS applies while the app is still preparing its payload.
+// 在 BEGIN_IMAGE 与第一个 DATA 字节之间为 false，这样在 App 仍在准备载荷期间
+// 使用长得多的 BLE_BEGIN_TIMEOUT_MS。
 static bool s_firstByteSeen = false;
-// Payload bytes past the length declared in BEGIN_IMAGE. They cannot be stored
-// (every offset is bounded by s_total) and they are NOT treated as a fatal
-// error any more: an app that repeats its last chunk used to lose a completely
-// valid image to ERR_OVERFLOW. They are counted here and only reported - as
-// ERR_OVERFLOW, the more precise diagnosis - if the image fails to verify
-// afterwards.
+// 超出 BEGIN_IMAGE 中声明长度的载荷字节。它们无法被存储（每个偏移都以 s_total
+// 为界），而且不再被当作致命错误：如果 App 重复发送最后一个分片，过去会因为
+// ERR_OVERFLOW 丢掉一幅完全有效的图像。这里只对它们计数，并且只有当图像随后
+// 校验失败时才上报 - 以 ERR_OVERFLOW 这个更精确的诊断。
 static uint32_t s_strayBytes = 0;
-// App-side request guidance from the last DATA write, so a repeated chunk can
-// be answered with a diagnosis instead of silence.
+// 来自最后一次 DATA 写入的 App 侧请求提示，使重复发送的分片能得到一个诊断，
+// 而不是被无声忽略。
 static volatile uint8_t s_dataHint = BLE_HINT_NONE;
-// BLE_FMT_* (1 = 2bpp, 2 = 1bpp). MUST NOT be bool: BLE_FMT_2BPP is 1, so a
-// bool collapses BLE_FMT_1BPP (2) into "true" and every 1bpp transfer is
-// decoded and re-CRCed as 2bpp - the transfer then always fails END_IMAGE.
+// BLE_FMT_*（1 = 2bpp，2 = 1bpp）。绝不能用 bool：BLE_FMT_2BPP 是 1，用 bool 会把
+// BLE_FMT_1BPP（2）塌缩成 "true"，于是每次 1bpp 传输都按 2bpp 解码并重算 CRC -
+// 该传输就会永远在 END_IMAGE 失败。
 static uint8_t s_format = 0;
 static uint32_t s_total = 0;
 static uint32_t s_received = 0;
-static uint32_t s_crcDeclared = 0;      // whole-image CRC from BEGIN_IMAGE
+static uint32_t s_crcDeclared = 0;      // 来自 BEGIN_IMAGE 的整幅图像 CRC
 static uint8_t s_session = 0;
 static uint16_t s_chunkSize = 0;
 static uint8_t s_chunksInWindow = 0;
 
-// Per-block verification.
-static uint8_t s_blockShift = 0;        // 0 = no block CRCs (v1 app)
+// 逐块校验。
+static uint8_t s_blockShift = 0;        // 0 = 无块 CRC（v1 App）
 static uint16_t s_blockCount = 0;
 static uint32_t s_blockSize = 0;
-static uint32_t s_blockCrcDeclared[BLE_MAX_BLOCKS];   // CRC the app promised
-static uint8_t s_blockBad[(BLE_MAX_BLOCKS + 7) / 8];  // bit set = failed
+static uint32_t s_blockCrcDeclared[BLE_MAX_BLOCKS];   // App 承诺的 CRC
+static uint8_t s_blockBad[(BLE_MAX_BLOCKS + 7) / 8];  // 置位 = 校验失败
 static uint16_t s_blockBadCount = 0;
-static uint16_t s_blockIndex = 0;       // block currently being accumulated
+static uint16_t s_blockIndex = 0;       // 当前正在累积的块
 static uint32_t s_blockCrcRunning = 0xFFFFFFFFu;
-static uint32_t s_blockBytes = 0;       // bytes folded into that accumulator
+static uint32_t s_blockBytes = 0;       // 已折入该累加器的字节数
 
-// Repair state (RETRY_BLOCK armed).
+// 修复状态（RETRY_BLOCK 已武装）。
 static volatile bool s_fixing = false;
 static uint16_t s_fixBlock = 0;
-static uint32_t s_fixOffset = 0;        // payload offset of the block start
-static uint32_t s_fixLen = 0;           // total bytes this block needs
-static uint32_t s_fixNeeded = 0;        // bytes still outstanding
+static uint32_t s_fixOffset = 0;        // 该块起始处的载荷偏移
+static uint32_t s_fixLen = 0;           // 该块总共需要的字节数
+static uint32_t s_fixNeeded = 0;        // 仍然欠缺的字节数
 static uint32_t s_fixCrcRunning = 0xFFFFFFFFu;
 
-// ---------------------------------------------------------------- CRC32
+// ---------------------------------------------------------------- CRC32 校验
 
-// Standard CRC-32 (poly 0xEDB88320 reflected, init 0xFFFFFFFF, final xor
-// 0xFFFFFFFF) - the same value java.util.zip.CRC32 produces. Bitwise rather
-// than table-driven: the whole image is a few tens of milliseconds either way,
-// and it keeps 1 KB of table out of RAM.
+// 标准 CRC-32（反射多项式 0xEDB88320，初值 0xFFFFFFFF，末尾异或
+// 0xFFFFFFFF）- 与 java.util.zip.CRC32 产生的值相同。用位运算实现而非查表：
+// 整幅图像两种方式都只需几十毫秒，而这样可以省下 1 KB 的表不占 RAM。
 static uint32_t crc32Update(uint32_t crc, const uint8_t *data, size_t len) {
     for (size_t i = 0; i < len; i++) {
         crc ^= data[i];
@@ -165,11 +153,11 @@ static uint32_t crc32Update(uint32_t crc, const uint8_t *data, size_t len) {
 
 static inline uint32_t crc32Finish(uint32_t crc) { return crc ^ 0xFFFFFFFFu; }
 
-// ---------------------------------------------------------------- log throttle
+// ---------------------------------------------------------------- 日志限流
 
-// millis() of the last throttled line. See BLE_LOG_THROTTLE_MS: two calls
-// inside the window return false, so a repeated chunk or a block that keeps
-// failing CRC cannot flood (and, worse, stall) the host task's console.
+// 最后一条被限流的日志的 millis()。见 BLE_LOG_THROTTLE_MS：窗口内的两次调用
+// 会返回 false，因此重复发送的分片或持续 CRC 失败的块无法刷爆（更糟的是拖住）
+// 主机任务的串口。
 static uint32_t s_lastThrottledLog = 0;
 
 static bool throttleLogDue() {
@@ -179,7 +167,7 @@ static bool throttleLogDue() {
     return true;
 }
 
-// ---------------------------------------------------------------- framing
+// ---------------------------------------------------------------- 组帧
 
 static void pushFrame(uint8_t opcode, uint8_t seq, uint8_t status,
                       const uint8_t *payload, size_t len) {
@@ -193,12 +181,10 @@ static void pushFrame(uint8_t opcode, uint8_t seq, uint8_t status,
     frame[3] = (uint8_t)len;
     if (len) memcpy(frame + BLE_FRAME_HEADER_LEN, payload, len);
 
-    // notify(value, len) copies the frame into its own mbuf. Do NOT use
-    // setValue() + notify(): those are two separate operations on shared
-    // characteristic state, and a preemption between them (the host task is
-    // also sending here) can publish one frame's bytes under the other's
-    // notification - losing or duplicating a response/event. There is no READ
-    // property on CONTROL, so setValue() serves no purpose anyway.
+    // notify(value, len) 会把帧复制进它自己的 mbuf。不要用 setValue() + notify()：
+    // 那是对共享特征状态的两个独立操作，两者之间被抢占（主机任务也在这里发送）
+    // 会让一个帧的字节以另一个帧的通知发出 - 造成响应/事件丢失或重复。
+    // CONTROL 上没有 READ 属性，所以 setValue() 本来也没有用处。
     s_ctrl->notify(frame, len + BLE_FRAME_HEADER_LEN);
 }
 
@@ -225,23 +211,21 @@ static void sendProgress(bool blockDone) {
     sendEvent(BLE_EVT_PROGRESS, p, sizeof(p));
 }
 
-// ---------------------------------------------------------------- refresh guard
+// ---------------------------------------------------------------- 刷新守卫
 
-// Refuse a refresh that would land inside the cooldown, and tell the app why.
+// 拒绝一次会落在冷却期内的刷屏，并告知 App 原因。
 //
-// The app is expected to warn the user about permanent panel damage, and - only
-// if the user still says yes - hand the token back in CONFIRM_REFRESH and then
-// repeat the very command that was refused. Nothing is refreshed in the
-// meantime: silence from the app means "do not refresh", which is the safe
-// default for a mistake that cannot be undone.
+// App 应当就面板的永久性损伤警告用户，并且 - 只有在用户仍然同意时 - 才在
+// CONFIRM_REFRESH 中交回令牌，然后重复那条被拒绝的命令。在这期间不会有任何刷屏：
+// App 的沉默意味着"不要刷屏"，对于一个无法撤销的错误来说这是安全的默认做法。
 static void sendRefreshBlocked(uint8_t reqOpcode, uint8_t seq) {
     const uint8_t token = refreshGuardIssueToken(reqOpcode);
 
     uint8_t p[12];
     p[0] = token;
     p[1] = refreshGuardReason();
-    p[2] = reqOpcode;          // what to retry once the user agrees
-    p[3] = 0;                  // reserved
+    p[2] = reqOpcode;          // 用户同意后要重试的命令
+    p[3] = 0;                  // 保留字段
     bleWr16(p + 4, (uint16_t)refreshGuardWaitSeconds());
     bleWr16(p + 6, refreshGuardMinGapSeconds());
     bleWr32(p + 8, refreshGuardElapsedSeconds());
@@ -255,7 +239,7 @@ static void sendRefreshBlocked(uint8_t reqOpcode, uint8_t seq) {
             (unsigned long)refreshGuardElapsedSeconds());
 }
 
-// ---------------------------------------------------------------- transfer
+// ---------------------------------------------------------------- 传输
 
 static uint32_t expectedLength(uint8_t format) {
     if (format == BLE_FMT_2BPP) return EPD398_COLOR_BYTES;
@@ -264,7 +248,7 @@ static uint32_t expectedLength(uint8_t format) {
 }
 
 static uint16_t dataChunkSize() {
-    // ATT payload is MTU-3; the app is told not to exceed this.
+    // ATT 载荷为 MTU-3；已告知 App 不要超过这个值。
     int mtu = (int)s_mtu;
     if (mtu < 23) mtu = 23;
     int chunk = mtu - 3;
@@ -273,9 +257,9 @@ static uint16_t dataChunkSize() {
     return (uint16_t)chunk;
 }
 
-// Largest CONTROL frame value (payload + 4-byte header) this link can carry.
-// ATT notifications are silently truncated by the stack at MTU-3, which would
-// hand the app a frame whose length byte promises more bytes than arrived.
+// 这条链路能承载的最大 CONTROL 帧值（载荷 + 4 字节头）。
+// ATT 通知会被协议栈在 MTU-3 处静默截断，那会把一个长度字节承诺的字节数多于实际
+// 到达字节数的帧交给 App。
 static size_t attFrameLimit() {
     int mtu = (int)s_mtu;
     if (mtu < 23) mtu = 23;
@@ -330,8 +314,8 @@ static inline void markBlock(uint16_t index, bool bad) {
     }
 }
 
-// Write one payload byte at an arbitrary payload offset, rotating it into the
-// panel framebuffer. Shared by the normal path and the repair path.
+// 在任意载荷偏移处写入一个载荷字节，并把它旋转进面板帧缓冲。
+// 正常路径与修复路径共用。
 static inline void storePayloadByte(uint32_t offset, uint8_t b) {
     if (s_format == BLE_FMT_2BPP) {
         const int ys = (int)(offset / BLE_IMAGE_ROW_BYTES_2BPP);
@@ -341,7 +325,7 @@ static inline void storePayloadByte(uint32_t offset, uint8_t b) {
         bleSetCanvasPixel(s_frame, xs + 2, ys, (uint8_t)((b >> 2) & 0x03));
         bleSetCanvasPixel(s_frame, xs + 3, ys, (uint8_t)(b & 0x03));
     } else {
-        // 1bpp: one bit per pixel, 1 = white, expanded into four-byte groups.
+        // 1bpp：每像素一位，1 = 白，按 4 字节一组展开。
         const int ys = (int)(offset / BLE_IMAGE_ROW_BYTES_1BPP);
         const int xs = (int)(offset % BLE_IMAGE_ROW_BYTES_1BPP) * 8;
         for (int k = 0; k < 8; k++) {
@@ -351,27 +335,23 @@ static inline void storePayloadByte(uint32_t offset, uint8_t b) {
     }
 }
 
-// Consume one DATA write. Runs in the NimBLE host task.
+// 处理一次 DATA 写入。运行在 NimBLE 主机任务中。
 //
-// Two modes: normal reception (bytes go to s_received and roll into the current
-// block) and block repair (bytes go to the armed block's fixed offset). Both go
-// through storePayloadByte(), so the rotation and the format handling exist once.
+// 两种模式：正常接收（字节计入 s_received 并滚入当前块）和块修复（字节写到已武装
+// 的块的固定偏移）。两者都经由 storePayloadByte()，因此旋转和格式处理只存在一份。
 static void handleData(const uint8_t *d, size_t n) {
     if (n == 0) return;
 
     StateLock lock;
 
     if (!s_receiving) {
-        // A stray write outside a transfer. Ignore it rather than tear the link
-        // down - the app may simply have raced an ABORT, and a chunk that was
-        // already queued when END_IMAGE landed must not cost that app its image.
-        // No unconditional log either: an app that keeps pipelining after
-        // END_IMAGE would flood the console. s_dataHint is what the next
-        // END_IMAGE uses to explain itself, and the single throttled line below
-        // covers the case that really happens - data arriving while the previous
-        // image is being painted. (A repeated chunk can keep the
-        // BLE_DATA_CHUNK_MAX window open past the throttle, so a progress report
-        // is no guarantee that the app has heard anything.)
+        // 传输之外的多余写入。忽略它而不是把链路拆掉 - App 可能只是与一次 ABORT
+        // 抢跑，而在 END_IMAGE 落地时已经排队的那个分片不应该让该 App 丢掉图像。
+        // 也不做无条件日志：一个在 END_IMAGE 之后继续流水发送的 App 会刷爆串口。
+        // s_dataHint 是下一次 END_IMAGE 用来解释自身的东西，而下面那条被限流的日志
+        // 覆盖了真正会发生的情况 - 上一幅图像正在绘制期间有数据到达。（重复发送的
+        // 分片可以让 BLE_DATA_CHUNK_MAX 窗口在限流之后仍然保持打开，因此一次进度上报
+        // 并不能保证 App 已经收到任何东西。）
         if (s_renderPending || s_rendering) {
             s_dataHint = BLE_HINT_DATA_AFTER_END;
             if (throttleLogDue()) {
@@ -383,29 +363,26 @@ static void handleData(const uint8_t *d, size_t n) {
         return;
     }
     if (!s_frame) {
-        // Defensive: BEGIN_IMAGE refuses without a framebuffer, so a session
-        // cannot exist here. Count the bytes instead of tearing the session
-        // down; the verification below then fails on its own.
+        // 防御性处理：没有帧缓冲时 BEGIN_IMAGE 会拒绝，因此这里不可能存在会话。
+        // 只对这些字节计数，而不是把会话拆掉；下面的校验随后会自行失败。
         s_strayBytes += (uint32_t)n;
         return;
     }
 
-    // Any byte accepted for the active session proves the app is still there.
+    // 当前会话接受的任何字节都证明 App 还在。
     s_lastRxMs = millis();
     s_firstByteSeen = true;
 
     if (s_fixing) {
-        // Repair: fill the armed block, ignoring anything past its length so a
-        // stale in-flight chunk from before cannot corrupt the next block.
+        // 修复：填充已武装的块，忽略超出其长度的任何内容，这样之前残留的、仍在
+        // 传输中的分片就不会破坏下一个块。
         //
-        // NOTE: s_received deliberately does NOT move here. It counts payload
-        // bytes received, and a repair replaces bytes that were already counted;
-        // incrementing it would push the total past s_total and make the next
-        // END_IMAGE look like an overflow.
-        // NOTE: the destination offset advances with the bytes already folded
-        // into this block, not with the local index of the chunk. Using `i`
-        // directly pinned every chunk to the start of the block, so a block
-        // larger than one chunk ended up holding its first chunk repeated.
+        // 注意：s_received 在这里故意不动。它统计的是已接收的载荷字节，而一次修复
+        // 替换的是已经被计入的字节；递增它会让总数超过 s_total，使下一次 END_IMAGE
+        // 看起来像超长。
+        // 注意：目标偏移随已折入该块的字节推进，而不是随分片的局部下标推进。
+        // 直接用 `i` 会把每个分片都钉在块的起点，于是任何大于一个分片的块最终
+        // 都只持有它第一个分片的重复。
         size_t take = n;
         if (take > s_fixNeeded) take = (size_t)s_fixNeeded;
         const uint32_t consumed = s_fixLen - s_fixNeeded;
@@ -427,35 +404,28 @@ static void handleData(const uint8_t *d, size_t n) {
         return;
     }
 
-    // Bytes past the declared length are ignored, not fatal: they cannot be
-    // stored anywhere (every payload offset is bounded by s_total), and an app
-    // that repeats a chunk used to lose an image that was already complete and
-    // correct. They are counted so END_IMAGE can name the real problem when the
-    // image does not verify either.
+    // 超出声明长度的字节被忽略，而不是致命错误：它们无处可存（每个载荷偏移都以
+    // s_total 为界），而一个重复发送分片的 App 过去会因此丢掉一幅已经完整且正确的
+    // 图像。这里对它们计数，使 END_IMAGE 在图像同样校验不通过时能说出真正的问题。
     uint32_t take = (s_received < s_total) ? (s_total - s_received) : 0;
     if (take > (uint32_t)n) take = (uint32_t)n;
     if (take < (uint32_t)n) s_strayBytes += (uint32_t)n - take;
 
-    // ONE pass: store the byte, roll it into the current block, and close the
-    // block the moment its last byte lands.
+    // 一趟循环：存储字节、把它滚入当前块，并在它最后一个字节落地的那一刻关闭该块。
     //
-    // This has to be a single loop. Doing the block bookkeeping in a second pass
-    // (as an earlier version did) means the CRC accumulator consumed every byte
-    // of the chunk before any boundary was noticed, so whenever a block boundary
-    // fell inside a chunk the bytes *after* the boundary were folded into the
-    // previous block's CRC and every block from there on reported a mismatch.
-    // With the default 512-byte chunks and 4096-byte blocks the boundary always
-    // lands on a chunk edge, which is exactly why it stayed hidden until a
-    // non-dividing chunk size was tested.
+    // 这必须是单个循环。把块的记账放到第二趟（早期版本的做法）意味着 CRC 累加器
+    // 在发现任何边界之前就吃掉了整个分片的字节，于是只要块边界落在分片内部，边界
+    // *之后* 的字节就会被折进前一个块的 CRC，从那里开始的每个块都会报告不匹配。
+    // 使用默认的 512 字节分片和 4096 字节的块时，边界总是落在分片边缘，这正是这个
+    // 问题在测试一个不能整除的分片大小之前一直没被发现的原因。
     for (size_t i = 0; i < take; i++) {
         const uint32_t offset = s_received + (uint32_t)i;
         storePayloadByte(offset, d[i]);
         if (s_blockShift == 0) continue;
 
-        // A previous boundary can be sitting at a chunk edge. Reset the
-        // accumulator here, on the first byte of the new chunk, rather than at
-        // the boundary itself: if that whole write was lost, the full
-        // s_blockBytes is what lets closeMissingBlocks() name the lost block.
+        // 上一个边界可能正停在分片边缘。在新分片的第一个字节处重置累加器，
+        // 而不是在边界本身处重置：如果整整一次写入都丢了，正是完整的
+        // s_blockBytes 让 closeMissingBlocks() 能指明丢失的块。
         if (s_blockBytes == s_blockSize) {
             s_blockCrcRunning = 0xFFFFFFFFu;
             s_blockBytes = 0;
@@ -463,14 +433,14 @@ static void handleData(const uint8_t *d, size_t n) {
 
         s_blockCrcRunning = crc32Update(s_blockCrcRunning, &d[i], 1);
         s_blockBytes++;
-        // The final block of an image is usually short: close it on the last
-        // declared byte rather than waiting for a full block that never comes.
+        // 一幅图像的最后一个块通常是短的：在最后一个已声明的字节处关闭它，
+        // 而不是等一个永远不来的完整块。
         if (s_blockBytes == s_blockSize || (offset + 1) == s_total) {
             const bool bad =
                 crc32Finish(s_blockCrcRunning) != s_blockCrcDeclared[s_blockIndex];
             markBlock(s_blockIndex, bad);
-            // Throttled: the bitmap and s_blockBadCount stay exact either way,
-            // only the console line is skipped.
+            // 限流：无论哪种情况位图和 s_blockBadCount 都保持精确，
+            // 只是跳过串口这一行。
             if (bad && throttleLogDue()) {
                 BLE_LOG("[BLE] block %u FAILED crc %08lX != %08lX\n",
                         (unsigned)s_blockIndex,
@@ -478,14 +448,14 @@ static void handleData(const uint8_t *d, size_t n) {
                         (unsigned long)s_blockCrcDeclared[s_blockIndex]);
             }
             s_blockIndex++;
-            // Deliberately NOT resetting s_blockCrcRunning/s_blockBytes here if
-            // this is the end of the chunk; see the reset above.
+            // 如果这是分片的结尾，这里故意不重置 s_blockCrcRunning/s_blockBytes；
+            // 见上面的重置。
         }
     }
     s_received += take;
 
-    // Whatever the app still holds is in flight: a chunk that arrived past the
-    // declared length means its END_IMAGE may already be on the way.
+    // App 手上还留着的东西都在传输中：一个超出声明长度才到达的分片意味着它的
+    // END_IMAGE 可能已在路上。
     s_dataHint = s_strayBytes ? BLE_HINT_DATA_IGNORED
                               : ((s_received >= s_total) ? BLE_HINT_DATA_AFTER_END
                                                          : BLE_HINT_NONE);
@@ -497,12 +467,11 @@ static void handleData(const uint8_t *d, size_t n) {
     }
 }
 
-// Rebuild the payload digest from the framebuffer.
+// 从帧缓冲重建载荷摘要。
 //
-// Reading the canvas back through bleGetCanvasPixel() is what makes this honest
-// after a repair, and re-packing is exact in both directions: 2bpp stores the
-// four colour codes verbatim, and a 1bpp payload only ever contained black and
-// white, so the threshold back to one bit loses nothing.
+// 通过 bleGetCanvasPixel() 把画布读回来，才使这在一次修复之后仍然诚实，而且重新
+// 打包在两个方向上都是精确的：2bpp 逐字存储四个颜色码，1bpp 载荷里只可能出现黑与白，
+// 所以按阈值还原成一位不会有任何损失。
 static uint32_t recomputeWholeCrc() {
     if (!s_frame) return 0;
     uint32_t crc = 0xFFFFFFFFu;
@@ -540,27 +509,24 @@ static uint32_t recomputeWholeCrc() {
     return crc32Finish(crc);
 }
 
-// ---------------------------------------------------------------- requests
+// ---------------------------------------------------------------- 请求
 
-// Device capabilities. The layout is described in docs/BLE_PROTOCOL.md §5.2;
-// image_width/height are the *canvas* the app must produce, panel_width/height
-// are what the glass actually is, and rotation is what the device applies
-// between the two (informational - the app never pre-rotates).
+// 设备能力。布局见 docs/BLE_PROTOCOL.md §5.2；image_width/height 是 App 必须
+// 生成的 *画布*，panel_width/height 是玻璃面板本身的尺寸，rotation 是设备在两者
+// 之间施加的旋转（仅供参考 - App 从不预先旋转）。
 //
-// v3 appends the refresh cooldown *after* the variable-length device name, so
-// every offset a v2 parser already knows stays where it was: read the name via
-// device_name_len and then the two trailing bytes.
+// v3 把刷新冷却追加在可变长度设备名 *之后*，因此 v2 解析器已经知道的每个偏移都保持
+// 原位：先通过 device_name_len 读出名字，再读后面那两个字节。
 static void handleGetInfo(uint8_t seq) {
-    // Sized for the fixed block plus the longest name this firmware can build
-    // (s_name is 40 bytes), plus the trailing v3 field. The reply is far below
-    // BLE_FRAME_MAX_PAYLOAD either way; this just removes a silent overflow if
-    // the name is ever made longer.
+    // 按固定块加上本固件能构建出的最长名字（s_name 为 40 字节），再加末尾的 v3 字段
+    // 来定尺寸。无论哪种情况回复都远低于 BLE_FRAME_MAX_PAYLOAD；这只是消除名字一旦被
+    // 改长时出现的静默溢出。
     uint8_t p[96];
     size_t o = 0;
     const size_t nameLen = strlen(s_name);
 
-    // 39 fixed bytes + the name. If the negotiated MTU cannot carry the reply,
-    // say so instead of letting the stack truncate it into a malformed frame.
+    // 39 个固定字节 + 名字。如果协商出的 MTU 无法承载该回复，就直接说明，
+    // 而不是让协议栈把它截断成一个畸形帧。
     if (!frameFits(39 + nameLen)) {
         BLE_LOG("[GET_INFO] MTU %u too small for a %u-byte reply\n",
                 (unsigned)s_mtu, (unsigned)(39 + nameLen));
@@ -588,8 +554,8 @@ static void handleGetInfo(uint8_t seq) {
     bleWr16(p + o, dataChunkSize());    o += 2;
     bleWr16(p + o, BLE_WINDOW_CHUNKS);  o += 2;
     p[o++] = (uint8_t)BLE_ROTATION;
-    // v2 capability block: which block shifts are accepted and how many blocks
-    // the failure bitmap can hold. A v1 app simply ignores the extra bytes.
+    // v2 能力块：接受哪些块 shift，以及失败位图能容纳多少个块。
+    // v1 App 直接忽略这些多余字节。
     p[o++] = BLE_BLOCK_SHIFT_MIN;
     p[o++] = BLE_BLOCK_SHIFT_MAX;
     p[o++] = (uint8_t)BLE_MAX_BLOCKS;
@@ -597,9 +563,8 @@ static void handleGetInfo(uint8_t seq) {
     memcpy(p + o, s_name, nameLen);
     o += nameLen;
 
-    // v3: the minimum interval between full refreshes. The app needs it before
-    // it sends anything, to tell the user "the panel was refreshed N seconds
-    // ago" up front instead of after a refused request.
+    // v3：整屏刷新之间的最小间隔。App 需要在发送任何东西之前就拿到它，
+    // 以便提前而不是在被拒绝之后才告诉用户"面板在 N 秒前刚刷新过"。
     bleWr16(p + o, refreshGuardMinGapSeconds());
     o += 2;
 
@@ -613,10 +578,9 @@ static void handleBeginImage(uint8_t seq, const uint8_t *p, size_t len) {
         return;
     }
     if (s_receiving) {
-        // A valid new BEGIN supersedes an unfinished or failed session: the app
-        // is explicitly starting over (docs: after ERR_CRC, retry from BEGIN).
-        // Log it here, but keep the old session alive until the new request has
-        // passed validation and the cooldown gate.
+        // 一个有效的新 BEGIN 会取代未完成或已失败的会话：App 明确地重新开始
+        // （文档：ERR_CRC 之后，从 BEGIN 重试）。在这里记录日志，但在新请求通过校验
+        // 和冷却闸门之前，保持旧会话存活。
         BLE_LOG("[BLE] BEGIN supersedes unfinished session (%lu/%lu bytes)\n",
                 (unsigned long)s_received, (unsigned long)s_total);
     }
@@ -626,8 +590,8 @@ static void handleBeginImage(uint8_t seq, const uint8_t *p, size_t len) {
     const uint32_t total = bleRd32(p + 4);
     const uint32_t crc   = bleRd32(p + 8);
 
-    // flags and reserved are documented as must-be-0. Accepting garbage here
-    // would silently reinterpret a future frame version as this one.
+    // flags 与 reserved 在文档中规定必须为 0。在这里接受垃圾值会把未来的帧版本
+    // 静默地按当前版本重新解释。
     if (p[1] != 0 || p[3] != 0) {
         sendResponse(BLE_OP_BEGIN_IMAGE, seq, BLE_ERR_SIZE, nullptr, 0);
         return;
@@ -644,11 +608,9 @@ static void handleBeginImage(uint8_t seq, const uint8_t *p, size_t len) {
         return;
     }
 
-    // The refresh cooldown. Checked here rather than at END_IMAGE so a refusal
-    // costs nothing - the alternative is transferring 106 KB and only then
-    // being told no. A grant the user confirmed earlier is accepted here and
-    // stays armed until the panel is actually painted, so a transfer that fails
-    // on CRC does not make the user confirm twice.
+    // 刷新冷却。在这里检查而不是在 END_IMAGE 处，这样被拒绝不付出任何代价 -
+    // 否则就要传输 106 KB 之后才被告知不行。用户先前确认过的授权在这里会被接受，
+    // 并一直保持武装直到面板真正被绘制，因此一次因 CRC 失败的传输不会让用户确认两次。
     if (!refreshGuardMayRefreshFor(BLE_OP_BEGIN_IMAGE)) {
         sendRefreshBlocked(BLE_OP_BEGIN_IMAGE, seq);
         return;
@@ -663,8 +625,7 @@ static void handleBeginImage(uint8_t seq, const uint8_t *p, size_t len) {
     s_crcDeclared = crc;
     s_chunkSize = dataChunkSize();
     s_session++;
-    // A new session starts with a clean slate, including the diagnosis the next
-    // ERR_STATE END_IMAGE would carry.
+    // 新会话从干净的状态开始，包括下一次 ERR_STATE 的 END_IMAGE 会携带的诊断信息。
     s_dataHint = BLE_HINT_NONE;
 
     s_blockShift = blockShift;
@@ -676,9 +637,8 @@ static void handleBeginImage(uint8_t seq, const uint8_t *p, size_t len) {
             sendResponse(BLE_OP_BEGIN_IMAGE, seq, BLE_ERR_SIZE, nullptr, 0);
             return;
         }
-        // The END_IMAGE failure reply carries a bitmap of ceil(count/8) bytes.
-        // If it cannot fit the negotiated MTU the app could never learn which
-        // blocks to retransmit, so refuse before any data is transferred.
+        // END_IMAGE 的失败回复携带 ceil(count/8) 字节的位图。如果它装不进协商出的
+        // MTU，App 就永远无法知道该重传哪些块，所以在传输任何数据之前就拒绝。
         if (!frameFits(10 + (size_t)((s_blockCount + 7) / 8))) {
             resetTransfer();
             BLE_LOG("[BLE] MTU %u too small for a %u-block failure bitmap\n",
@@ -686,10 +646,9 @@ static void handleBeginImage(uint8_t seq, const uint8_t *p, size_t len) {
             sendResponse(BLE_OP_BEGIN_IMAGE, seq, BLE_ERR_MTU, nullptr, 0);
             return;
         }
-        // Until BLOCK_CRCS arrives, every block counts as unverified. A block
-        // whose declared CRC is still the initial 0 is also failed by the
-        // comparison, so an app that forgets BLOCK_CRCS gets ERR_BLOCKS rather
-        // than a silently accepted image.
+        // 在 BLOCK_CRCS 到达之前，每个块都算作未校验。声明 CRC 仍为初始值 0 的块
+        // 也会在比较中判为失败，因此忘记发送 BLOCK_CRCS 的 App 得到的是 ERR_BLOCKS，
+        // 而不是被静默接受的图像。
         memset(s_blockCrcDeclared, 0, sizeof(s_blockCrcDeclared));
     }
 
@@ -713,14 +672,13 @@ static void handleBlockCrcs(uint8_t seq, const uint8_t *p, size_t len) {
     if (len < 4) { sendResponse(BLE_OP_BLOCK_CRCS, seq, BLE_ERR_LENGTH, nullptr, 0); return; }
     if (!s_receiving) { sendResponse(BLE_OP_BLOCK_CRCS, seq, BLE_ERR_STATE, nullptr, 0); return; }
     if (s_blockShift == 0) {
-        // The app asked for block CRCs in BEGIN? No - it did not, so this frame
-        // has nothing to attach to.
+        // App 在 BEGIN 里请求了块 CRC 吗？没有 - 它没有请求，所以这一帧没有可以依附的
+        // 对象。
         sendResponse(BLE_OP_BLOCK_CRCS, seq, BLE_ERR_STATE, nullptr, 0);
         return;
     }
     if (s_received != 0) {
-        // Must arrive before the first DATA byte, otherwise the device has
-        // already closed blocks it cannot retroactively verify.
+        // 必须在第一个 DATA 字节之前到达，否则设备已经关闭了一些无法追溯校验的块。
         sendResponse(BLE_OP_BLOCK_CRCS, seq, BLE_ERR_STATE, nullptr, 0);
         return;
     }
@@ -750,10 +708,9 @@ static void handleRetryBlock(uint8_t seq, const uint8_t *p, size_t len) {
         return;
     }
     const uint16_t index = bleRd16(p);
-    // reserved must be 0, exactly as BEGIN_IMAGE's flags/reserved are checked:
-    // accepting garbage there would silently reinterpret a future frame version
-    // as this one. Only checked when the field is present, so a 2-byte frame
-    // from an app that omits it keeps working.
+    // reserved 必须为 0，与 BEGIN_IMAGE 的 flags/reserved 检查完全一致：在那里
+    // 接受垃圾值会把未来的帧版本静默地按当前版本重新解释。仅在字段存在时才检查，
+    // 因此省略该字段的 App 发来的 2 字节帧仍然可用。
     if (len >= 4 && bleRd16(p + 2) != 0) {
         sendResponse(BLE_OP_RETRY_BLOCK, seq, BLE_ERR_SIZE, nullptr, 0);
         return;
@@ -763,18 +720,16 @@ static void handleRetryBlock(uint8_t seq, const uint8_t *p, size_t len) {
         return;
     }
     if (!blockIsBad(index)) {
-        // Already good - nothing to do, but do not make the app treat that as a
-        // failure. The response carries a zero length so it knows to skip it.
+        // 已经是好的 - 无事可做，但不要让 App 把它当成失败。响应携带零长度，
+        // 让它知道可以跳过。
         const uint8_t r[4] = {0, 0, 0, 0};
         sendResponse(BLE_OP_RETRY_BLOCK, seq, BLE_OK, r, sizeof(r));
         return;
     }
 
-    // Re-arming while the previous repair is still outstanding (docs §5.9: one
-        // block at a time) would silently drop the bytes already received for it.
-        // The block stays marked bad and nothing is corrupted, but the app loses
-        // what it sent - so refuse it instead, which is one round trip and cannot
-        // be mistaken for progress.
+    // 在上一次修复仍未完成时重新武装（docs §5.9：一次一个块）会静默丢弃该块
+    // 已收到的字节。块仍被标记为坏，也没有任何损坏，但 App 丢掉了它发送的内容 -
+    // 所以改为拒绝，这是一次往返，而且不会被误认为进展。
         if (s_fixing) {
             BLE_LOG("[BLE] RETRY_BLOCK %u refused: block %u still has %lu of %lu bytes outstanding\n",
                 (unsigned)index, (unsigned)s_fixBlock,
@@ -791,8 +746,7 @@ static void handleRetryBlock(uint8_t seq, const uint8_t *p, size_t len) {
     s_fixing = true;
     s_lastRxMs = millis();
 
-    // The byte count the app must send next, so it does not have to derive the
-    // short final block itself.
+    // App 接下来必须发送的字节数，这样它不必自己推导出那个短的末块。
     uint8_t r[4];
     bleWr16(r, index);
     bleWr16(r + 2, (uint16_t)s_fixNeeded);
@@ -802,20 +756,19 @@ static void handleRetryBlock(uint8_t seq, const uint8_t *p, size_t len) {
             (unsigned)index, (unsigned long)s_fixNeeded);
 }
 
-// Account for blocks whose bytes never arrived.
+// 处理那些字节始终没有到达的块。
 //
-// The per-chunk reset in handleData() marks the blocks whose bytes are missing
-// or shifted; if the loss includes the final block, nothing ever closes it and
-// END_IMAGE cannot name it. Closing the tail here (partial current block first,
-// then every remaining one) marks those blocks bad so ERR_BLOCKS carries a
-// bitmap the app can repair. It does NOT change s_received: that is a wire-byte
-// counter, and a repaired block replaces bytes that were already counted.
+// handleData() 中的逐分片重置会标记字节缺失或错位的块；如果丢失的内容包含最后一个
+// 块，就永远没有东西去关闭它，END_IMAGE 也无法指明它。在这里关闭尾部（先关闭当前
+// 不完整的块，再关闭其余每一个块）会把这些块标记为坏，使 ERR_BLOCKS 携带一份 App 可以
+// 修复的位图。它不改变 s_received：那是一个线缆字节计数器，而被修复的块替换的是
+// 已经被计入的字节。
 static void closeMissingBlocks() {
     if (s_blockShift == 0 || s_blockCount == 0) return;
     if (s_blockIndex >= s_blockCount) return;
 
     if (s_blockBytes != 0) {
-        // A partial block cannot match a CRC declared over the full block.
+        // 不完整的块无法与针对完整块声明的 CRC 匹配。
         markBlock(s_blockIndex, true);
         s_blockIndex++;
     }
@@ -830,63 +783,60 @@ static void closeMissingBlocks() {
 static void handleEndImage(uint8_t seq, const uint8_t *p, size_t len) {
     if (len < 4) { sendResponse(BLE_OP_END_IMAGE, seq, BLE_ERR_LENGTH, nullptr, 0); return; }
     if (!s_receiving) {
-        // There is no session to verify. Two apps get here: one that raced an
-        // ABORT, and one that pipelined its DATA straight into the paint of the
-        // image it just finished - the log throttle is per BLE_DATA_CHUNK_MAX
-        // window, so a fast link keeps that window open well past it, and this is
-        // the only answer such an app will ever get. The hint byte says which.
-        const uint8_t hint = s_dataHint;   // volatile -> a plain copy to pass on
+        // 没有会话可以校验。有两种 App 会走到这里：一种与 ABORT 抢跑，另一种把
+        // 它的 DATA 直接流水写进刚结束那幅图像的绘制过程 - 日志限流是按
+        // BLE_DATA_CHUNK_MAX 窗口计的，因此一条快速的链路会让该窗口远在其后仍然
+        // 保持打开，而这就是这种 App 唯一能得到的答复。hint 字节说明了是哪一种。
+        const uint8_t hint = s_dataHint;   // volatile -> 拷出一份普通副本用于传递
         sendResponse(BLE_OP_END_IMAGE, seq, BLE_ERR_STATE, &hint, 1);
         return;
     }
 
-    // Ending a transfer is activity: the app may legitimately need a while to
-    // inspect ERR_BLOCKS and issue RETRY_BLOCK, so the stall clock restarts
-    // here rather than expiring while it decides.
+    // 结束一次传输也是活动：App 可能需要一段时间来检查 ERR_BLOCKS 并发起
+    // RETRY_BLOCK，因此停滞计时在这里重新开始，而不是在它做决定时就到期。
     s_lastRxMs = millis();
 
     const uint32_t declared = bleRd32(p);
-    // Captured before any resetTransfer(), so both the success log and the
-    // failure branch report the same number.
+    // 在任何 resetTransfer() 之前就取好，这样成功日志和失败分支报告的是同一个
+    // 数字。
     const uint32_t stray = s_strayBytes;
-    // Sized for the largest possible failure reply: 8 bytes of CRC/byte count,
-    // the two ERR_BLOCKS counters and the 16-byte bitmap of BLE_MAX_BLOCKS.
+    // 按可能的最大失败回复定尺寸：8 字节的 CRC/字节数、两个 ERR_BLOCKS 计数器，
+    // 以及 BLE_MAX_BLOCKS 对应的 16 字节位图。
     uint8_t r[4 + 4 + 2 + (BLE_MAX_BLOCKS + 7) / 8];
-    // What a successful reply carries, and nothing more: the documented
-    // success payload is fixed at 8 bytes, so sizeof(r) (26) must NOT be sent.
+    // 成功回复只携带这些，不多不少：文档规定的成功载荷固定为 8 字节，因此
+    // 绝不能发送 sizeof(r)（26）。
     const size_t OK_PAYLOAD_LEN = 8;
 
     sendStateEvent(BLE_STATE_VERIFYING, BLE_OK);
 
-    // Close any block the link dropped, so the failure bitmap can name it.
+    // 关闭链路丢掉的任何块，这样失败位图才能指明它。
     closeMissingBlocks();
 
-    // Whole-image digest, recomputed from what actually ended up in the buffer.
-    // Doing it here (rather than accumulating during reception) is what keeps
-    // the reported value correct after a repair.
+    // 整幅图像摘要，从最终真正落在缓冲区里的内容重新计算。
+    // 在这里算（而不是在接收过程中累加）正是让上报值在一次修复之后依然正确的
+    // 原因。
     const uint32_t actual = recomputeWholeCrc();
 
     const bool complete = (s_received == s_total);
     const bool blocksEnabled = (s_blockShift != 0);
-    // The CRC in BEGIN and in END describe the same payload; if they disagree
-    // the app is confused (or the frame is corrupt), so fail before touching
-    // the panel. The recomputed value is reported either way.
+    // BEGIN 和 END 里的 CRC 描述的是同一份载荷；如果它们不一致，说明 App 糊涂了
+    // （或者帧已损坏），因此在触碰面板之前就失败。无论哪种情况都会上报重新计算的
+    // 值。
     const bool declaredOk = (s_crcDeclared == declared);
-    // Every block present and verified. s_blockIndex reaching s_blockCount means
-    // all blocks were closed - normally by received bytes, otherwise by
-    // closeMissingBlocks() + RETRY_BLOCK. A repaired short block fills the
-    // framebuffer, so the wire byte count no longer has to equal s_total.
+    // 每个块都存在且已通过校验。s_blockIndex 到达 s_blockCount 意味着所有块都被
+    // 关闭了 - 通常是被收到的字节关闭，否则是被 closeMissingBlocks() +
+    // RETRY_BLOCK 关闭。被修复的短块会填满帧缓冲，因此线上的字节数不再必须等于
+    // s_total。
     const bool blocksOk = blocksEnabled &&
                           (s_blockBadCount == 0) &&
                           (s_blockIndex == s_blockCount);
 
     bool ok;
     if (blocksEnabled) {
-        // Per-block CRCs are strictly stronger than one digest over everything,
-        // so they decide. The whole-image CRC is still reported for the app to
-        // cross-check, but a mismatch there would mean a bug, not a bad link.
-        // Bytes past total_len are ignored above and cannot make a verified
-        // image fail, so a fully verified payload is accepted even then.
+        // 逐块 CRC 严格强于一个覆盖全部内容的摘要，所以由它们说了算。整幅图像
+        // CRC 仍然会上报，供 App 交叉核对，但那里若不一致就意味着 bug，而不是
+        // 链路不好。超过 total_len 的字节已在上面被忽略，不可能让一幅已通过校验的
+        // 图像失败，因此即使存在这些字节，完全通过校验的载荷仍会被接受。
         ok = blocksOk && declaredOk && (actual == declared);
     } else {
         ok = complete && declaredOk && (actual == declared);
@@ -906,26 +856,25 @@ static void handleEndImage(uint8_t seq, const uint8_t *p, size_t len) {
         BLE_LOG("[BLE] transfer OK: %lu bytes, crc %08lX\n",
                 (unsigned long)doneBytes, (unsigned long)actual);
                 if (stray) {
-                    // Tolerated, but the app's chunk arithmetic is worth fixing: the
-                    // next image may not be so lucky.
+                    // 可以容忍，但 App 的分片算术值得修一修：下一幅图像可能
+                    // 就没这么幸运了。
                     BLE_LOG("[BLE]   note: %lu byte(s) past total_len were ignored\n",
                             (unsigned long)stray);
                 }
                 return;
     }
 
-    // Failure. Report enough for the app to decide between "resend some blocks"
-    // and "start over", without a second round trip.
+    // 失败。上报足够的信息，让 App 无需第二次往返就能在"重传一些块"和
+    // "从头开始"之间做决定。
     bleWr32(r, actual);
     bleWr32(r + 4, s_received);
 
     uint8_t status;
     size_t plen;
     if (stray != 0) {
-        // Bytes arrived past the declared length. They were ignored (nothing
-        // could have been stored) and the payload did NOT verify either, so the
-        // app's framing is the suspect - a more useful answer than a bitmap of
-        // a mis-framed stream, and the session stays retryable.
+        // 有字节超过声明长度才到达。它们已被忽略（本来也无处可存），而载荷也没能
+        // 通过校验，所以可疑的是 App 的组帧 - 这比给出一份针对错位数据流的位图
+        // 更有用，而且会话仍然可以重试。
         plen = 8;
         status = BLE_ERR_OVERFLOW;
         BLE_LOG("[BLE] END: %lu bytes over total_len (%lu/%lu), crc %08lX (want %08lX)\n",
@@ -952,24 +901,22 @@ static void handleEndImage(uint8_t seq, const uint8_t *p, size_t len) {
     }
     sendResponse(BLE_OP_END_IMAGE, seq, status, r, plen);
 
-    // Stay in the receiving state so the app can RETRY_BLOCK without a fresh
-    // BEGIN_IMAGE. An ABORT or a new BEGIN_IMAGE clears it. The event is what
-    // stops an app that tracks EVT_STATE from sitting at VERIFYING forever.
+    // 保持在接收状态，这样 App 不必重新 BEGIN_IMAGE 就能 RETRY_BLOCK。
+    // ABORT 或新的 BEGIN_IMAGE 会清掉它。正是这个事件让跟踪 EVT_STATE 的 App
+    // 不会永远停在 VERIFYING。
     sendStateEvent(BLE_STATE_RECEIVING, BLE_OK);
 }
 
-// The app's clock, adopted once per connection (or whenever it wants to correct
-// it). This is the only time source the device has: it never connects to
-// anything, and its RTC does not survive a power cut. The value is anchored to
-// the device's own monotonic uptime, so time keeps advancing on its own from
-// then on and the cooldown becomes an exact comparison rather than a bound.
+// App 的时钟，每次连接采纳一次（或 App 想纠正时随时采纳）。这是设备唯一的
+// 时间来源：它从不连接任何东西，而它的 RTC 熬不过断电。该值被锚定到设备自己的
+// 单调运行时间上，因此从此以后时间会自行向前走，冷却也就变成精确比较而不是一个
+// 界限。
 static void handleSyncTime(uint8_t seq, const uint8_t *p, size_t len) {
     if (len < 8) { sendResponse(BLE_OP_SYNC_TIME, seq, BLE_ERR_LENGTH, nullptr, 0); return; }
 
-    // UTC seconds since the epoch, little-endian, 64-bit. 64 bits rather than
-    // 32 so that the classic mistake - sending milliseconds from
-    // System.currentTimeMillis() - cannot be silently truncated into something
-    // that happens to look like a plausible date.
+    // 自纪元以来的 UTC 秒数，小端，64 位。用 64 位而不是 32 位，是为了让那个
+    // 经典错误 - 直接发送 System.currentTimeMillis() 的毫秒数 - 不会被静默地
+    // 截断成一个碰巧看起来像合理日期的值。
     uint64_t utc = 0;
     for (int i = 7; i >= 0; i--) utc = (utc << 8) | p[i];
 
@@ -979,10 +926,10 @@ static void handleSyncTime(uint8_t seq, const uint8_t *p, size_t len) {
     }
 
     uint8_t r[8];
-    bleWr32(r, refreshGuardLastRefreshUtc());   // 0 = none, or it could not be dated
+    bleWr32(r, refreshGuardLastRefreshUtc());   // 0 = 无，或者无法确定日期
     bleWr16(r + 4, refreshGuardMinGapSeconds());
-    r[6] = 1;   // clock known from here on
-    r[7] = 0;   // reserved
+    r[6] = 1;   // 从这里开始时钟是已知的
+    r[7] = 0;   // 保留字段
     sendResponse(BLE_OP_SYNC_TIME, seq, BLE_OK, r, sizeof(r));
 
     BLE_LOG("[BLE] clock synced: last refresh %lu, min gap %u s\n",
@@ -990,17 +937,15 @@ static void handleSyncTime(uint8_t seq, const uint8_t *p, size_t len) {
             (unsigned)refreshGuardMinGapSeconds());
 }
 
-// The user accepted the warning. Arms a one-shot authorisation covering the
-// command the app is about to repeat; it is consumed when the panel is actually
-// painted, so it cannot be replayed for a second refresh.
+// 用户接受了警告。武装一次性的授权，覆盖 App 即将重复的那条命令；授权在面板
+// 真正被绘制时被消费掉，因此它不能被重放用于第二次刷新。
 static void handleConfirmRefresh(uint8_t seq, const uint8_t *p, size_t len) {
     if (len < 1) { sendResponse(BLE_OP_CONFIRM_REFRESH, seq, BLE_ERR_LENGTH, nullptr, 0); return; }
 
     const uint8_t token = p[0];
     if (!refreshGuardArmGrant(token)) {
-        // Unknown, stale, already-used, or too soon after a forced refresh.
-        // The app should treat this as "ask the user again" rather than
-        // retrying blindly.
+        // 未知、过期或已用过的令牌。App 应把它当作"再问用户一次"：重新发送那条
+        // 被拒绝的命令以取得一个新令牌，而不是盲目重试这一个。
         sendResponse(BLE_OP_CONFIRM_REFRESH, seq, BLE_ERR_STATE, nullptr, 0);
         return;
     }
@@ -1008,21 +953,19 @@ static void handleConfirmRefresh(uint8_t seq, const uint8_t *p, size_t len) {
 }
 
 static void handleControlFrame(const uint8_t *f, size_t n) {
-    if (n < BLE_FRAME_HEADER_LEN) return;   // too short to even read a header
+    if (n < BLE_FRAME_HEADER_LEN) return;   // 短到连帧头都读不出来
 
-    // One lock for the whole request: a control frame mutates several fields
-    // that the loop task also reads (session, render flags, hint flag), and the
-    // handlers below may nest into the refresh guard. Lock order is always
-    // state -> guard; nothing takes them in the other order.
+    // 整个请求使用同一把锁：一个控制帧会改动 loop 任务也会读取的若干字段
+    // （会话、绘制标志、提示标志），而下面的处理函数可能嵌套进刷新守卫。加锁顺序
+    // 永远是 状态 -> 守卫；没有任何地方按相反顺序获取它们。
     StateLock lock;
 
     const uint8_t opcode = f[0];
     const uint8_t seq = f[1];
     const uint8_t plen = f[3];
 
-    // Range-check the opcode first, so every sendResponse() below is guaranteed
-    // to build an opcode inside the response range (0x81..0xBF) rather than
-    // something that looks like an event.
+    // 先对 opcode 做范围检查，这样下面每个 sendResponse() 都保证构造出的 opcode
+    // 落在响应区间（0x81..0xBF）内，而不会做出看起来像事件的东西。
     if (opcode == 0 || opcode > BLE_OP_MAX_REQUEST) {
         pushFrame(BLE_OP_ERROR, seq, BLE_ERR_OPCODE, &opcode, 1);
         return;
@@ -1065,18 +1008,16 @@ static void handleControlFrame(const uint8_t *f, size_t n) {
 
         case BLE_OP_ABORT:
             resetTransfer();
-            s_renderPending = false;   // the app is abandoning this image too
+            s_renderPending = false;   // App 也要放弃这幅图像
             s_hintRequested = false;
             sendResponse(BLE_OP_ABORT, seq, BLE_OK, nullptr, 0);
-            // A paint that is already running cannot be cancelled: the panel is
-            // mid-waveform and stopping there would leave it in an undefined
-            // state, so the DISPLAYED event still follows (disconnect-proof
-            // rendering is deliberate). Saying so is what keeps an app from
-            // believing the screen will not change.
+            // 已经开始的一次绘制无法取消：面板正处于波形中途，停在那里会让它进入
+            // 未定义状态，因此 DISPLAYED 事件仍然会跟着发出（防断开式绘制是刻意
+            // 的设计）。把这一点说出来，才能让 App 不误以为屏幕不会变化。
             if (s_rendering) {
                 static const char kCannotAbort[] = "render in progress, cannot be aborted";
-                // Same discipline as PING: a frame the link cannot carry would be
-                // truncated by the stack, so it is not sent at all.
+                // 与 PING 同样的纪律：链路承载不了的帧会被协议栈截断，
+                // 所以干脆不发送。
                 if (frameFits(sizeof(kCannotAbort) - 1)) {
                     sendEvent(BLE_EVT_LOG, (const uint8_t *)kCannotAbort,
                               sizeof(kCannotAbort) - 1);
@@ -1088,17 +1029,15 @@ static void handleControlFrame(const uint8_t *f, size_t n) {
             break;
 
         case BLE_OP_SHOW_HINT:
-            // A hint is a full refresh of the same framebuffer; it cannot be
-            // painted while a transfer is writing into it or an image is being
-            // pushed to the panel. Returning OK here used to mean "accepted,
-            // then silently dropped" - now the app learns why.
+            // 提示屏是对同一个帧缓冲的一次整屏刷新；在一次传输正写入其中、或一幅
+            // 图像正被推送到面板时，无法绘制它。过去在这里返回 OK 意味着"接受了，
+            // 然后被静默丢弃" - 现在 App 会知道原因。
             if (s_receiving || s_renderPending || s_rendering) {
                 sendResponse(BLE_OP_SHOW_HINT, seq, BLE_ERR_BUSY, nullptr, 0);
                 break;
             }
-            // Painting the hint screen is a full refresh like any other, so it
-            // owes the panel the same cooldown. A confirmation grant only
-            // authorises the command it was issued for.
+            // 绘制提示屏和其他任何整屏刷新一样，因此它也要遵守同样的面板冷却。
+            // 一次确认授权只对它被签发时的那条命令有效。
             if (!refreshGuardMayRefreshFor(BLE_OP_SHOW_HINT)) {
                 sendRefreshBlocked(BLE_OP_SHOW_HINT, seq);
                 break;
@@ -1108,11 +1047,10 @@ static void handleControlFrame(const uint8_t *f, size_t n) {
             break;
 
         case BLE_OP_PING:
-            // Echo, but never a frame the link cannot carry: an ATT notification
-            // longer than MTU-3 is silently TRUNCATED by the stack, which hands
-            // the app a frame whose length byte promises more bytes than arrived.
-            // That is the failure ERR_MTU exists for, and the doc caps PING at
-            // 250 bytes of payload anyway.
+            // 原样回显，但绝不发送链路承载不了的帧：长于 MTU-3 的 ATT 通知会被
+            // 协议栈静默 TRUNCATED，交给 App 的帧其长度字节承诺的字节数会多于
+            // 实际到达的字节数。这正是 ERR_MTU 存在的意义，而且文档本来就把
+            // PING 的载荷上限设为 250 字节。
             if (!frameFits(plen)) {
                 BLE_LOG("[PING] MTU %u cannot echo a %u-byte payload\n",
                         (unsigned)s_mtu, (unsigned)plen);
@@ -1142,7 +1080,7 @@ static void handleControlFrame(const uint8_t *f, size_t n) {
     }
 }
 
-// ---------------------------------------------------------------- callbacks
+// ---------------------------------------------------------------- 回调
 
 class ControlCallbacks : public NimBLECharacteristicCallbacks {
     void onWrite(NimBLECharacteristic *c, ble_gap_conn_desc *desc) override {
@@ -1154,7 +1092,7 @@ class ControlCallbacks : public NimBLECharacteristicCallbacks {
     void onSubscribe(NimBLECharacteristic *c, ble_gap_conn_desc *desc, uint16_t subValue) override {
         (void)c;
         (void)desc;
-        if (subValue == 0) return;   // unsubscribed
+        if (subValue == 0) return;   // 已取消订阅
         BLE_LOG("[BLE] CONTROL notifications enabled\n");
         sendStateEvent(s_receiving ? BLE_STATE_RECEIVING : BLE_STATE_CONNECTED, BLE_OK);
     }
@@ -1168,19 +1106,17 @@ class DataCallbacks : public NimBLECharacteristicCallbacks {
     }
 };
 
-// Ask for the link parameters that decide the transfer speed.
+// 请求决定传输速率的链路参数。
 //
-// Nothing here is optional if the transfer is to run at more than ~10 kB/s:
-// Android's default connection interval for an unprioritised peripheral is
-// ~48 ms and it sends one write per event, which is exactly the 9.5 kB/s that
-// was measured. Both calls are requests - the phone may clamp them - so the
-// results are logged and the app is told to do its half as well.
+// 若要让传输超过约 10 kB/s，这里没有任何一项是可选的：Android 对未提权外设的
+// 默认连接间隔约为 48 ms，而且每个事件只发一次写入，这恰好就是实测到的
+// 9.5 kB/s。两次调用都是请求 - 手机可能把它们钳制住 - 因此这里记录结果，
+// 而 App 那边也被要求做好它的一半。
 static void applyFastLinkParams(uint16_t connHandle) {
-    // Both calls are NimBLE requests, not commands: updateConnParams() and
-    // setDataLen() return void in NimBLE-Arduino 1.4.3 (the phone may clamp or
-    // refuse them silently), so the only thing that can be checked here is that
-    // the request was made - the real outcome shows up in the connection
-    // interval and MTU this same log line reports.
+    // 两次调用都是 NimBLE 请求而不是命令：在 NimBLE-Arduino 1.4.3 里
+    // updateConnParams() 和 setDataLen() 返回 void（手机可能静默地钳制或拒绝
+    // 它们），所以这里唯一能检查的就是请求已经发出 - 真正的结果会体现在同一条
+    // 日志行所报告的连接间隔和 MTU 上。
     if (s_server) {
         s_server->updateConnParams(connHandle,
                                    BLE_CONN_MIN_INTERVAL, BLE_CONN_MAX_INTERVAL,
@@ -1190,8 +1126,8 @@ static void applyFastLinkParams(uint16_t connHandle) {
                 (unsigned)BLE_CONN_LATENCY, (unsigned)(BLE_CONN_TIMEOUT * 10));
     }
 
-    // Data length extension. Without it the controller may keep the 27-byte
-    // default LL payload and chop every 512-byte ATT write into ~20 PDUs.
+    // 数据长度扩展。没有它，控制器可能一直沿用 27 字节的默认 LL 载荷，把每次
+    // 512 字节的 ATT 写入切成约 20 个 PDU。
     if (s_server) {
         s_server->setDataLen(connHandle, BLE_LL_TX_OCTETS);
         BLE_LOG("[BLE] data length requested: %u octets\n",
@@ -1201,10 +1137,9 @@ static void applyFastLinkParams(uint16_t connHandle) {
 
 class ServerCallbacks : public NimBLEServerCallbacks {
     void onConnect(NimBLEServer *server, ble_gap_conn_desc *desc) override {
-        // One central only. The protocol has a single session and a single
-        // framebuffer; a second peer could inject DATA into an active transfer
-        // or read/steal the state events. Advertising is stopped on connect,
-        // but a correctness rule must not depend on that default.
+        // 只允许一个中心设备。协议只有一个会话和一个帧缓冲；第二个对端可能向
+        // 进行中的传输注入 DATA，或者读取/窃取状态事件。连接时广播会停止，但一条
+        // 正确性规则不能依赖那个默认行为。
         if (s_connected) {
             BLE_LOG("[BLE] rejecting second central (handle %u)\n",
                     (unsigned)desc->conn_handle);
@@ -1225,13 +1160,13 @@ class ServerCallbacks : public NimBLEServerCallbacks {
 
         applyFastLinkParams(desc->conn_handle);
 
-        // The app is expected to subscribe; onSubscribe() sends the first state
-        // event. This one covers centrals that write before subscribing.
+        // App 应当会订阅；onSubscribe() 会发出第一个状态事件。这一个覆盖在
+        // 订阅之前就写入的中心设备。
         sendStateEvent(BLE_STATE_CONNECTED, BLE_OK);
     }
 
     void onDisconnect(NimBLEServer *server, ble_gap_conn_desc *desc) override {
-        // A rejected second central must never tear down the active session.
+        // 被拒绝的第二个中心设备绝不能拆掉活动会话。
         if (desc && s_connHandle != desc->conn_handle) {
             BLE_LOG("[BLE] rejected second central disconnected\n");
             return;
@@ -1243,15 +1178,14 @@ class ServerCallbacks : public NimBLEServerCallbacks {
             resetTransfer();
             s_hintRequested = false;
 
-            // s_renderPending is deliberately NOT cleared: an image that passed
-            // every CRC check is complete in the framebuffer and is safe to
-            // paint even if the phone walked away. ABORT is the explicit way to
-            // cancel it.
+            // 刻意不清除 s_renderPending：一幅通过了所有 CRC 校验的图像在帧缓冲里
+            // 已经是完整的，即使手机走开了也可以安全绘制。ABORT 才是取消它的
+            // 显式方式。
         }
 
         BLE_LOG("[BLE] disconnected, advertising again\n");
-        // advertiseOnDisconnect is disabled in bleInit, so this is the only
-        // place advertising is restarted (the stack used to do it as well).
+        // advertiseOnDisconnect 已在 bleInit 中禁用，所以这里是唯一重新开始
+        // 广播的地方（协议栈过去也会做这件事）。
         if (server) server->startAdvertising();
     }
 
@@ -1263,12 +1197,12 @@ class ServerCallbacks : public NimBLEServerCallbacks {
     }
 };
 
-// ---------------------------------------------------------------- public API
+// ---------------------------------------------------------------- 公开 API
 
 bool bleInit(const char *deviceName, uint8_t *frameBuffer) {
     s_frame = frameBuffer;
 
-    // Created before any callback can fire. Recursive because handlers nest.
+    // 在任何回调可能触发之前创建。递归锁，因为处理函数会嵌套。
     if (!s_stateMux) s_stateMux = xSemaphoreCreateRecursiveMutex();
 
     strncpy(s_name, deviceName ? deviceName : "8adge", sizeof(s_name) - 1);
@@ -1280,8 +1214,8 @@ bool bleInit(const char *deviceName, uint8_t *frameBuffer) {
 
     s_server = NimBLEDevice::createServer();
     s_server->setCallbacks(new ServerCallbacks());
-    // Advertising is restarted by onDisconnect(); disabling the stack's own
-    // automatic restart avoids doing it twice.
+    // 广播由 onDisconnect() 重新开始；禁用协议栈自身的自动重启可以避免
+    // 做两次。
     s_server->advertiseOnDisconnect(false);
 
     NimBLEService *svc = s_server->createService(BLE_SERVICE_UUID);
@@ -1291,11 +1225,10 @@ bool bleInit(const char *deviceName, uint8_t *frameBuffer) {
         NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::WRITE_NR | NIMBLE_PROPERTY::NOTIFY);
     s_ctrl->setCallbacks(new ControlCallbacks());
 
-    // No explicit max_len: NimBLECharacteristic defaults it to
-    // BLE_ATT_ATTR_MAX_LEN (512), and the host rejects any write whose length is
-    // *greater* than that. That ceiling is exactly why BLE_DATA_CHUNK_MAX is 512
-    // rather than "whatever the MTU allows" - with an MTU of 517 the ATT payload
-    // would be 514 bytes and the write would come back as an ATT error.
+    // 不显式指定 max_len：NimBLECharacteristic 默认把它设为
+    // BLE_ATT_ATTR_MAX_LEN（512），而主机拒绝任何长度 *大于* 该值的写入。
+    // 正是这个上限让 BLE_DATA_CHUNK_MAX 取 512，而不是"MTU 允许多少就多少" -
+    // MTU 为 517 时 ATT 载荷会是 514 字节，写入就会以 ATT 错误返回。
     s_data = svc->createCharacteristic(
         BLE_DATA_UUID,
         NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::WRITE_NR);
@@ -1305,19 +1238,18 @@ bool bleInit(const char *deviceName, uint8_t *frameBuffer) {
 
     NimBLEAdvertising *adv = NimBLEDevice::getAdvertising();
 
-    // The advertisement data is built by hand rather than with
-    // addServiceUUID(), because NimBLE packs the service UUID first and the
-    // name only afterwards: 3 (flags) + 18 (128-bit UUID) + 16 (name) is 37
-    // bytes, so the name would be pushed into the scan response and a passive
-    // scan would see an anonymous device. Name-first is what the app filters on.
+    // 广播数据是手工拼的，而不是用
+    // addServiceUUID()，因为 NimBLE 会先把服务 UUID 打包进去、名字排在后面：
+    // 3（flags）+ 18（128 位 UUID）+ 16（名字）共 37 字节，于是名字会被挤进扫描
+    // 响应，被动扫描只会看到一个匿名设备。名字在前才是 App 用来过滤的依据。
     //
-    //   advertising packet : flags + complete local name   (19 bytes)
-    //   scan response      : the 128-bit service UUID      (18 bytes)
+    //   广播包             : flags + 完整本地名             (19 字节)
+    //   扫描响应           : 128 位服务 UUID               (18 字节)
     //
-    // Android merges both into one ScanRecord, so a ScanFilter on the service
-    // UUID matches even though the UUID is not in the advertising packet.
+    // Android 会把两者合并成一个 ScanRecord，因此针对服务 UUID 的 ScanFilter
+    // 仍然能匹配，即使该 UUID 并不在广播包里。
     NimBLEAdvertisementData advData;
-    advData.setFlags(0x02 /* LE General Discoverable */);
+    advData.setFlags(0x02 /* LE General Discoverable，低功耗通用可发现 */);
     advData.setName(s_name);
 
     NimBLEAdvertisementData scanData;
@@ -1347,30 +1279,28 @@ bool bleTakeRenderRequest(uint8_t *outFormat, uint32_t *outBytes) {
 
     if (!s_renderPending) return false;
     if (!s_frame) {
-        // Nothing can be painted; dropping the request is better than setting
-        // s_rendering and leaving it set forever (which would answer every
-        // later BEGIN_IMAGE with ERR_BUSY).
+        // 什么都无法绘制；丢弃这个请求总好过设置
+        // s_rendering 并让它永远保持（那会让之后每个 BEGIN_IMAGE 都以 ERR_BUSY
+        // 作答）。
         s_renderPending = false;
         return false;
     }
     if (outFormat) *outFormat = s_renderFormat;
     if (outBytes) *outBytes = s_renderBytes;
     s_renderPending = false;
-    // Claim the framebuffer until the caller says the paint is done. Without this
-    // a BEGIN_IMAGE arriving during the 15-25 s refresh would rewrite the very
-    // bytes being pushed to the panel.
+    // 占用帧缓冲，直到调用方说绘制完成。没有这一点，在 15-25 s 的整屏刷新
+    // 期间到达的 BEGIN_IMAGE 会改写正在被推送到面板的那些字节。
     s_rendering = true;
     return true;
 }
 
 void bleRenderFinished() {
     StateLock lock;
-    // One line, once, when an app managed to have its data dropped during the
-    // paint: without it the only trace is a BEGIN_IMAGE that is sometimes
-    // answered ERR_BUSY and sometimes ERR_COOLDOWN, which no phone-side bug can
-    // be diagnosed from. s_dataHint itself is deliberately NOT cleared here -
-    // the next BEGIN_IMAGE clears it, and until then it is what tells an app
-    // whose END_IMAGE arrives after the paint why nothing was received.
+    // 当某个 App 的数据在绘制期间被丢弃时，只打一行、只打一次：没有它，
+    // 唯一的痕迹就是一个时而收到 ERR_BUSY、时而收到 ERR_COOLDOWN 的
+    // BEGIN_IMAGE，从中无法诊断出任何手机侧的 bug。s_dataHint 本身在这里刻意
+    // 不清除 - 下一次 BEGIN_IMAGE 会清掉它，而在那之前，正是它告诉那些 END_IMAGE
+    // 在绘制之后才到达的 App 为什么什么都没收到。
     if (s_dataHint == BLE_HINT_DATA_AFTER_END) {
         BLE_LOG("[BLE] DATA arrived while the panel was being painted and was dropped\n");
     }
@@ -1396,16 +1326,15 @@ void blePollTransferTimeout() {
         StateLock lock;
 
         if (!s_receiving) return;
-        // BEGIN -> first DATA may legitimately take a while (quantisation,
-        // compression); every later gap is a stall.
+        // BEGIN -> 第一个 DATA 之间合理地可能要等一会儿（量化、压缩）；
+        // 之后的每一次间隔都算停滞。
         const uint32_t limit = s_firstByteSeen ? BLE_RX_TIMEOUT_MS : BLE_BEGIN_TIMEOUT_MS;
         silenceMs = (uint32_t)(millis() - s_lastRxMs);
         if (silenceMs < limit) return;
 
-        // A phone that kept the link up but stopped sending (killed app, a write
-        // that never retried) would otherwise leave the session stuck in
-        // RECEIVING/FIXING and answer every future BEGIN_IMAGE with ERR_STATE.
-        // The buffer already holds whatever arrived; a new BEGIN overwrites it.
+        // 否则，一个保持链路却停止发送的手机（App 被杀、一次从未重传的写入）
+        // 会让会话卡在 RECEIVING/FIXING，并让之后每个 BEGIN_IMAGE 都得到
+        // ERR_STATE。缓冲区里已经存有收到的内容；新的 BEGIN 会覆写它。
         received = s_received;
         total = s_total;
         resetTransfer();
@@ -1416,8 +1345,8 @@ void blePollTransferTimeout() {
 
     BLE_LOG("[BLE] transfer stalled for %lu ms (%lu/%lu bytes), resetting session\n",
             (unsigned long)silenceMs, (unsigned long)received, (unsigned long)total);
-    // Sent outside the state lock: notify() takes the NimBLE host lock, and
-    // keeping the two nested would invert the lock order for no benefit.
+    // 在状态锁之外发送：notify() 会取 NimBLE 主机锁，把两者嵌套起来只会颠倒
+    // 加锁顺序，没有任何好处。
     sendStateEvent(BLE_STATE_CONNECTED, BLE_OK);
 }
 

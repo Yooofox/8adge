@@ -1,88 +1,88 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:layout_width="match_parent"
-    android:layout_height="wrap_content"
-    android:background="?attr/colorSurfaceContainerHigh"
-    android:orientation="vertical"
-    android:padding="16dp">
+android:layout_width="match_parent"
+android:layout_height="wrap_content"
+android:background="?attr/colorSurfaceContainerHigh"
+android:orientation="vertical"
+android:padding="16dp">
 
-    <TextView
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="手动自由裁切图片"
-        android:textColor="?attr/colorOnSurface"
-        android:textSize="18sp"
-        android:textStyle="bold" />
+<TextView
+android:layout_width="match_parent"
+android:layout_height="wrap_content"
+android:text="手动自由裁切图片"
+android:textColor="?attr/colorOnSurface"
+android:textSize="18sp"
+android:textStyle="bold" />
 
-    <TextView
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="2dp"
-        android:text="拖动四周绿角与中心调整裁切区域"
-        android:textColor="?attr/colorOnSurfaceVariant"
-        android:textSize="12sp" />
+<TextView
+android:layout_width="match_parent"
+android:layout_height="wrap_content"
+android:layout_marginTop="2dp"
+android:text="拖动四周绿角与中心调整裁切区域"
+android:textColor="?attr/colorOnSurfaceVariant"
+android:textSize="12sp" />
 
-    <!-- Interactive Crop Overlay View Container -->
-    <FrameLayout
-        android:layout_width="match_parent"
-        android:layout_height="320dp"
-        android:layout_marginTop="12dp"
-        android:background="#000000">
+    <!-- 交互式裁剪浮层视图容器 -->
+<FrameLayout
+android:layout_width="match_parent"
+android:layout_height="320dp"
+android:layout_marginTop="12dp"
+android:background="#000000">
 
-        <com.file.eightbadge.ui.CropOverlayView
-            android:id="@+id/dialogCropOverlayView"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent" />
+<com.file.eightbadge.ui.CropOverlayView
+android:id="@+id/dialogCropOverlayView"
+android:layout_width="match_parent"
+android:layout_height="match_parent" />
 
-    </FrameLayout>
+</FrameLayout>
 
-    <!-- Controls -->
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="12dp"
-        android:gravity="center_vertical"
-        android:orientation="horizontal">
+    <!-- 控制项 -->
+<LinearLayout
+android:layout_width="match_parent"
+android:layout_height="wrap_content"
+android:layout_marginTop="12dp"
+android:gravity="center_vertical"
+android:orientation="horizontal">
 
-        <com.google.android.material.checkbox.MaterialCheckBox
-            android:id="@+id/dialogCheckLockRatio"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:checked="true"
-            android:text="锁定 552:768 比例" />
+<com.google.android.material.checkbox.MaterialCheckBox
+android:id="@+id/dialogCheckLockRatio"
+android:layout_width="0dp"
+android:layout_height="wrap_content"
+android:layout_weight="1"
+android:checked="true"
+android:text="锁定 552:768 比例" />
 
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/dialogBtnResetCrop"
-            style="@style/Widget.Material3.Button.OutlinedButton"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="重置" />
+<com.google.android.material.button.MaterialButton
+android:id="@+id/dialogBtnResetCrop"
+style="@style/Widget.Material3.Button.OutlinedButton"
+android:layout_width="wrap_content"
+android:layout_height="wrap_content"
+android:text="重置" />
 
-    </LinearLayout>
+</LinearLayout>
 
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="12dp"
-        android:gravity="end"
-        android:orientation="horizontal">
+<LinearLayout
+android:layout_width="match_parent"
+android:layout_height="wrap_content"
+android:layout_marginTop="12dp"
+android:gravity="end"
+android:orientation="horizontal">
 
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/dialogBtnCancel"
-            style="@style/Widget.Material3.Button.TextButton"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="取消" />
+<com.google.android.material.button.MaterialButton
+android:id="@+id/dialogBtnCancel"
+style="@style/Widget.Material3.Button.TextButton"
+android:layout_width="wrap_content"
+android:layout_height="wrap_content"
+android:text="取消" />
 
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/dialogBtnApplyCrop"
-            style="@style/Widget.Material3.Button"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="8dp"
-            android:text="应用裁切" />
+<com.google.android.material.button.MaterialButton
+android:id="@+id/dialogBtnApplyCrop"
+style="@style/Widget.Material3.Button"
+android:layout_width="wrap_content"
+android:layout_height="wrap_content"
+android:layout_marginStart="8dp"
+android:text="应用裁切" />
 
-    </LinearLayout>
+</LinearLayout>
 
 </LinearLayout>

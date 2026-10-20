@@ -49,14 +49,14 @@ class BleManager(private val context: Context) {
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private val bluetoothAdapter: BluetoothAdapter? = BluetoothAdapter.getDefaultAdapter()
 
-    // Scanned Devices
+    // 扫描到的设备
     private val _scannedDevices = MutableStateFlow<List<BleDeviceItem>>(emptyList())
     val scannedDevices: StateFlow<List<BleDeviceItem>> = _scannedDevices.asStateFlow()
 
     private val _isScanning = MutableStateFlow(false)
     val isScanning: StateFlow<Boolean> = _isScanning.asStateFlow()
 
-    // Connection & Device State
+    // 连接与设备状态
     private var bluetoothGatt: BluetoothGatt? = null
     private var controlCharacteristic: BluetoothGattCharacteristic? = null
     private var dataCharacteristic: BluetoothGattCharacteristic? = null
@@ -70,19 +70,19 @@ class BleManager(private val context: Context) {
     private val _deviceInfo = MutableStateFlow(DeviceInfo())
     val deviceInfo: StateFlow<DeviceInfo> = _deviceInfo.asStateFlow()
 
-    // Transfer Progress
+    // 传输进度
     private val _transferProgress = MutableStateFlow(TransferProgress())
     val transferProgress: StateFlow<TransferProgress> = _transferProgress.asStateFlow()
 
-    // Log Stream StateFlow
+    // 日志流 StateFlow
     private val _logsFlow = MutableStateFlow<List<com.file.eightbadge.model.LogMessage>>(emptyList())
     val logsFlow: StateFlow<List<com.file.eightbadge.model.LogMessage>> = _logsFlow.asStateFlow()
 
-    // Cooldown Blocked Event Stream
+    // 冷却拦截事件流
     private val _refreshBlockedFlow = MutableSharedFlow<RefreshBlockedEvent>(extraBufferCapacity = 10)
     val refreshBlockedFlow: SharedFlow<RefreshBlockedEvent> = _refreshBlockedFlow.asSharedFlow()
 
-    // Internal locks and pending deferreds
+    // 内部锁与待完成的 deferred
     private val commandMutex = Mutex()
     private var nextSeq: Byte = 1
     @Volatile
@@ -101,7 +101,7 @@ class BleManager(private val context: Context) {
         return seq
     }
 
-    // Log Snapshot List in Memory
+    // 内存中的日志快照列表
     private val logList = mutableListOf<com.file.eightbadge.model.LogMessage>()
 
     fun getLogsSnapshot(): List<com.file.eightbadge.model.LogMessage> {
@@ -136,7 +136,7 @@ class BleManager(private val context: Context) {
         Log.d("BleManager", "[$timestamp] [$type] $message")
     }
 
-    // --- Bluetooth Scanning ---
+    // --- 蓝牙扫描 ---
 
     fun startScan() {
         val scanner = bluetoothAdapter?.bluetoothLeScanner
@@ -174,7 +174,7 @@ class BleManager(private val context: Context) {
             return
         }
 
-        // Auto stop after 12s
+        // 12 秒后自动停止
         scope.launch {
             delay(12000)
             if (_isScanning.value) {
@@ -219,13 +219,13 @@ class BleManager(private val context: Context) {
         }
     }
 
-    // --- Connection & GATT Lifecycle ---
+    // --- 连接与 GATT 生命周期 ---
 
     fun connect(deviceItem: BleDeviceItem) {
         stopScan()
         scope.launch {
             disconnectInternal()
-            delay(150) // Stagger previous GATT cleanup to prevent GATT handle collisions
+            delay(150) // 错开上一步的 GATT 清理，避免 GATT handle 冲突
 
             log("正在连接设备: ${deviceItem.name} (${deviceItem.address})...", LogType.INFO)
             _connectedDeviceName.value = deviceItem.name
@@ -353,7 +353,7 @@ class BleManager(private val context: Context) {
             log("MTU 协商成功: $mtu (GATT status: $status)", LogType.INFO)
 
             scope.launch {
-                // Step 1: Enable NOTIFY on CONTROL
+                // 步骤 1：在 CONTROL 上开启 NOTIFY
                 controlCharacteristic?.let { ctrl ->
                     gatt.setCharacteristicNotification(ctrl, true)
                     val descriptor = ctrl.getDescriptor(BleProtocol.CCCD_DESCRIPTOR_UUID)
@@ -370,20 +370,20 @@ class BleManager(private val context: Context) {
                     }
                 }
 
-                delay(200) // Stagger before connection priority request to prevent OS GATT race condition
+                delay(200) // 在请求连接优先级之前错开，避免系统 GATT 竞态
 
-                // Step 2: Request High Connection Priority
+                // 步骤 2：请求高连接优先级
                 val prioSuccess = gatt.requestConnectionPriority(BluetoothGatt.CONNECTION_PRIORITY_HIGH)
                 log("请求蓝牙高优先连接模式 (CONNECTION_PRIORITY_HIGH): $prioSuccess", LogType.SUCCESS)
 
                 delay(200)
 
-                // Step 3: Issue SYNC_TIME (Protocol v3 Mandate) before GET_INFO
+                // 步骤 3：先下发 SYNC_TIME（协议 v3 强制要求），再执行 GET_INFO
                 syncTime()
 
                 delay(100)
 
-                // Step 4: Issue GET_INFO
+                // 步骤 4：下发 GET_INFO
                 getInfo()
             }
         }
@@ -418,7 +418,7 @@ class BleManager(private val context: Context) {
                     if (frame.error == ProtocolError.OK) LogType.INFO else LogType.ERROR)
                 _connectionState.value = frame.state
 
-                // Auto finish transfer progress when screen finishes rendering or resets
+                // 屏幕刷新完成或复位后，自动结束传输进度
                 if (frame.state == DeviceState.DISPLAYED || frame.state == DeviceState.IDLE || frame.state == DeviceState.HINT_SHOWN) {
                     _connectionState.value = DeviceState.CONNECTED
                     _transferProgress.value = _transferProgress.value.copy(
@@ -464,7 +464,7 @@ class BleManager(private val context: Context) {
         }
     }
 
-    // --- Command Engine with Auto-Abort Recovery ---
+    // --- 命令引擎（带自动 ABORT 恢复） ---
 
     private suspend fun sendControlCommand(
         opcode: Byte,
@@ -539,9 +539,12 @@ class BleManager(private val context: Context) {
     ): BleProtocol.ControlFrame? {
         var resp = sendControlCommand(opcode, payload, timeoutMs)
 
-        // If MCU responds with ERR_STATE (0x03) and opcode is not OP_ABORT,
-        // send ABORT to reset MCU state machine, then retry once.
-        if (resp != null && resp.status == ProtocolError.ERR_STATE && opcode != BleProtocol.OP_ABORT) {
+        // 若 MCU 返回 ERR_STATE (0x03) 且当前 opcode 既不是 OP_ABORT 也不是
+        // OP_CONFIRM_REFRESH，则发送 ABORT 复位 MCU 状态机，然后重试一次。
+        // 确认命令的 ERR_STATE 是令牌问题（过期/非当前令牌），不是设备卡滞：
+        // ABORT 帮不上忙，重试同一个旧 token 也必然再失败一次。
+        if (resp != null && resp.status == ProtocolError.ERR_STATE &&
+            opcode != BleProtocol.OP_ABORT && opcode != BleProtocol.OP_CONFIRM_REFRESH) {
             log("设备处于卡滞/忙碌状态 (ERR_STATE)，自动发送 ABORT 复位设备状态机...", LogType.WARNING)
             sendControlCommand(BleProtocol.OP_ABORT, timeoutMs = 2000L)
             delay(150)
@@ -550,7 +553,7 @@ class BleManager(private val context: Context) {
         return resp
     }
 
-    // --- User Commands ---
+    // --- 用户命令 ---
 
     suspend fun syncTime(): Boolean {
         val unixUtcSeconds = System.currentTimeMillis() / 1000L
@@ -575,12 +578,20 @@ class BleManager(private val context: Context) {
         val payload = BleProtocol.buildConfirmRefreshPayload(token)
         log("发送放行授权确认命令 CONFIRM_REFRESH (token=$token)...", LogType.INFO)
         val resp = sendControlCommandWithAutoAbort(BleProtocol.OP_CONFIRM_REFRESH, payload)
-        return if (resp is BleProtocol.ControlFrame.ConfirmRefreshResponse && resp.status == ProtocolError.OK) {
-            log("刷新确认成功! 获取一次性放行授权", LogType.SUCCESS)
-            true
-        } else {
-            log("刷新确认失败: ${resp?.status?.message ?: "无响应"}", LogType.ERROR)
-            false
+        return when {
+            resp is BleProtocol.ControlFrame.ConfirmRefreshResponse && resp.status == ProtocolError.OK -> {
+                log("刷新确认成功! 获取一次性放行授权", LogType.SUCCESS)
+                true
+            }
+            resp?.status == ProtocolError.ERR_STATE -> {
+                // 令牌无效或过期（有效期 120 s）。重新发一次原命令即可拿到新令牌。
+                log("刷新确认失败: 授权令牌已失效，请重新点击【发送】后再确认", LogType.ERROR)
+                false
+            }
+            else -> {
+                log("刷新确认失败: ${resp?.status?.message ?: "无响应"}", LogType.ERROR)
+                false
+            }
         }
     }
 
@@ -636,7 +647,7 @@ class BleManager(private val context: Context) {
         return resp is BleProtocol.ControlFrame.AbortResponse && resp.status == ProtocolError.OK
     }
 
-    // --- Image Transmission Engine v3 (Crash-Proof Buffer Management & Block CRC Verification) ---
+    // --- 图像传输引擎 v3（防崩溃缓冲管理 + 块 CRC 校验） ---
 
     fun sendImage(imageBytes: ByteArray, format: ImageFormat, crc32: Long, skipInitialAbort: Boolean = false) {
         if (_connectionState.value == DeviceState.IDLE) {
@@ -665,7 +676,7 @@ class BleManager(private val context: Context) {
 
         val totalBytes = imageBytes.size
 
-        // Calculate Block CRCs (block size = 4096 bytes, blockShift = 12)
+        // 计算各块 CRC（块大小 = 4096 字节，blockShift = 12）
         val blockShift = 12
         val blockSize = 1 shl blockShift // 4096
         val blockCount = (totalBytes + blockSize - 1) / blockSize
@@ -687,12 +698,12 @@ class BleManager(private val context: Context) {
         )
 
         if (!skipInitialAbort) {
-            // Pre-clean MCU state machine if previous transmission ended or MCU is non-IDLE
+            // 若上一次传输已结束或 MCU 处于非 IDLE 状态，预先清理 MCU 状态机
             sendControlCommand(BleProtocol.OP_ABORT, timeoutMs = 1000L)
             delay(50)
         }
 
-        // Step 1: Send BEGIN_IMAGE (with auto-abort recovery)
+        // 步骤 1：发送 BEGIN_IMAGE（带自动 ABORT 恢复）
         val beginPayload = BleProtocol.buildBeginImagePayload(format, blockShift.toByte(), totalBytes, crc32)
         val beginResp = sendControlCommandWithAutoAbort(BleProtocol.OP_BEGIN_IMAGE, beginPayload)
 
@@ -714,10 +725,10 @@ class BleManager(private val context: Context) {
 
         log("BEGIN_IMAGE v3 握手成功! Session=$session, ChunkSize=$chunkSize B, BlockShift=$blockShift ($blockCount 块)", LogType.SUCCESS)
 
-        // Micro-delay to allow Android GATT stack to fully clear previous notification lock before sending 108B BLOCK_CRCS payload
+        // 微延时，让 Android GATT 栈在发送 108B 的 BLOCK_CRCS 负载前完全释放上一次通知锁
         delay(50)
 
-        // Step 2: Send BLOCK_CRCS (opcode 0x08) BEFORE any DATA bytes (Spec §5.9)
+        // 步骤 2：在任何 DATA 字节之前先发送 BLOCK_CRCS（opcode 0x08）（规范 §5.9）
         val crcsPayload = BleProtocol.buildBlockCrcsPayload(blockSize, blockCount, blockCrcs)
         val crcsResp = sendControlCommandWithAutoAbort(BleProtocol.OP_BLOCK_CRCS, crcsPayload, timeoutMs = 5000L)
         if (crcsResp !is BleProtocol.ControlFrame.BlockCrcsResponse || crcsResp.status != ProtocolError.OK) {
@@ -735,7 +746,7 @@ class BleManager(private val context: Context) {
             log("成功注册 $blockCount 个 Block CRC32! 硬件校验与局部修复准备就绪", LogType.SUCCESS)
         }
 
-        // Step 3: Stream DATA chunks safely without packet dropping
+        // 步骤 3：安全地流式发送 DATA 分片，避免丢包
         val totalChunks = (totalBytes + chunkSize - 1) / chunkSize
         var sentBytes = 0
         var sentChunks = 0
@@ -798,8 +809,8 @@ class BleManager(private val context: Context) {
             sentBytes = end
             sentChunks++
 
-            // Smooth pacing delay (2ms every 2 chunks = 1ms/chunk) to prevent Android GATT buffer
-            // and MCU BLE RX FIFO overruns during fast NO_RESPONSE transmissions (especially 1bpp / 52KB)
+            // 平滑限速延时（每 2 个分片延时 2ms = 1ms/分片），避免快速 NO_RESPONSE 传输时
+            // Android GATT 缓冲区与 MCU BLE RX FIFO 溢出（尤其是 1bpp / 52KB）
             if (sentChunks % 2 == 0) {
                 delay(2)
             }
@@ -822,10 +833,10 @@ class BleManager(private val context: Context) {
         val avgSpeedKbps = if (sendDuration > 0f) (totalBytes / 1024f) / sendDuration else 0f
         log("全图原始数据全部投递至蓝牙底层! 耗时: %.2fs (%.1f KB/s). 正在等待无线 OTA 管道充分落盘...".format(sendDuration, avgSpeedKbps), LogType.SUCCESS)
 
-        // Settle delay (800ms) to allow Android Bluetooth Driver Queue and MCU DMA/Flash to fully flush NO_RESPONSE packets
+        // 稳定延时（800ms），让 Android 蓝牙驱动队列与 MCU DMA/Flash 充分落盘 NO_RESPONSE 数据包
         delay(800)
 
-        // Step 4: Send END_IMAGE & Handle Selective Block Repair
+        // 步骤 4：发送 END_IMAGE 并处理定向块修复
         var endSuccess = false
         var retryRounds = 0
         val lastBlockIndex = blockCount - 1
@@ -848,7 +859,7 @@ class BleManager(private val context: Context) {
                         continue
                     }
 
-                    // Firmware v1.2.0 1bpp last block (3840/4096B) sector alignment compatibility handling
+                    // 固件 v1.2.0 在 1bpp 尾块（3840/4096B）上的扇区对齐兼容处理
                     if (format == ImageFormat.BPP1 && isV120Firmware && endResp.receivedBytes == totalBytes && badIndices == listOf(lastBlockIndex)) {
                         log("提示: 针对固件 v1.2.0 1bpp 尾块 (3840/4096B) 对齐校验已知缺陷，全图 52992 字节已 100% 完整落盘，放行刷新!", LogType.SUCCESS)
                         endSuccess = true

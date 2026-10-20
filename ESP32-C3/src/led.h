@@ -1,54 +1,54 @@
-// Onboard status LED: a small, non-blocking state machine.
+// 板载状态 LED：一个小巧的、非阻塞的状态机。
 //
-// The device is a "headless" gadget whose only feedback channel is one blue LED
-// (GPIO8 on the C3-SuperMini, active low - see PIN_LED in config.h), so the LED
-// has to carry four different meanings at once:
+// 本设备是“无头”小玩意，唯一的反馈通道就是一颗蓝色 LED
+//（C3-SuperMini 上的 GPIO8，低电平有效 - 见 config.h 里的 PIN_LED），
+// 所以这颗 LED 必须同时承载四种含义：
 //
-//   Solid      "everything is fine" - a phone is connected, or a picture is up
-//   SlowBlink  "working on it"       - advertising, or refreshing the panel
-//   FastBlink  "needs attention"     - transfer running, or an error
-//   Off        "asleep"
+//   Solid       “一切正常”     - 手机已连接，或图片已在屏上
+//   SlowBlink   “正在处理”     - 正在广播，或正在刷屏
+//   FastBlink   “需要关注”     - 传输进行中，或出错
+//   Off         “休眠”
 //
-// Two entry points keep call sites simple:
+// 两个入口点让调用点保持简单：
 //
-//   ledSetMode(mode)     set the steady state
-//   ledFeedback(pattern) one-shot acknowledgment; "waiting" and "off" also move
-//                        the steady state, so a call site never has to remember
-//                        to do both. See the declaration for the patterns.
+//   ledSetMode(mode)     设置稳态
+//   ledFeedback(pattern) 一次性确认；“waiting”和“off”也会改变
+//                        稳态，所以调用点不必记住
+//                        要同时做这两件事。可用模式见下面的声明。
 //
-// Nothing here blocks: ledTick() advances a blink from millis(), and ledDelay()
-// is a delay() replacement that keeps ticking. ledDelay() is what lets the LED
-// keep blinking while the panel is busy for 25 s inside a refresh.
+// 这里没有阻塞操作：ledTick() 基于 millis() 推进闪烁，ledDelay()
+// 是能持续跳动的 delay() 替代品。正是 ledDelay() 让 LED 在面板
+// 于一次刷新中忙上 25 s 时仍能继续闪烁。
 #pragma once
 
 #include <stdint.h>
 
 enum class LedMode : uint8_t {
-    Off,        // steady off - sleeping
-    Solid,      // steady on  - ready
-    FastBlink,  // ~5 Hz      - problem / waiting for input
-    SlowBlink,  // ~0.8 Hz    - busy
+    Off,        // 稳定熄灭 - 休眠
+    Solid,      // 稳定点亮 - 就绪
+    FastBlink,  // ~5 Hz      - 故障 / 等待输入
+    SlowBlink,  // ~0.8 Hz    - 忙
 };
 
-/** Configure the pin and park the LED off. Safe to call before anything else. */
+/** 配置引脚并让 LED 停在熄灭状态。可在其他任何事之前安全调用。 */
 void ledInit();
 
-/** Set the steady state. No-op when the mode is already active. */
+/** 设置稳态。模式已生效时为空操作。 */
 void ledSetMode(LedMode mode);
 
-/** Current steady state. */
+/** 当前稳态。 */
 LedMode ledMode();
 
-/** Advance a blink. Cheap; call it from every loop iteration. */
+/** 推进一次闪烁。开销很小；请在每次 loop 迭代中调用它。 */
 void ledTick();
 
-/** delay() that keeps ledTick()ing, so blinks survive long blocking waits. */
+/** 会持续 ledTick() 的 delay()，让闪烁能熬过长时间阻塞等待。 */
 void ledDelay(unsigned long ms);
 
 /**
- * One-shot pattern: "ack" (two short blinks, leaves the steady state alone),
- * "waiting" (start slow-blinking) or "off". Unknown patterns are ignored and
- * leave the LED untouched, so a stale call site cannot park it in a state
- * nothing ever changes back.
+ * 一次性模式："ack"（两次短闪，不动稳态）、
+ * "waiting"（开始慢闪）或 "off"。未知模式会被忽略并
+ * 保持 LED 不变，这样一个过期的调用点无法把它停在
+ * 一个再也不会被改变的状态里。
  */
 void ledFeedback(const char *pattern);

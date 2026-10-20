@@ -21,13 +21,13 @@ class CropOverlayView @JvmOverloads constructor(
 
     private var srcBitmap: Bitmap? = null
 
-    // Exact destination bounds where the bitmap is drawn in fitCenter
+    // 位图以 fitCenter 方式绘制时的精确目标边界
     val imageDstRect = RectF()
 
-    // Crop box in screen pixel coordinates
+    // 裁剪框（屏幕像素坐标）
     val cropRect = RectF()
 
-    var targetAspectRatio: Float = 552f / 768f // Default portrait ratio
+    var targetAspectRatio: Float = 552f / 768f // 默认竖屏比例
     var isRatioLocked: Boolean = true
         set(value) {
             field = value
@@ -39,12 +39,12 @@ class CropOverlayView @JvmOverloads constructor(
     private val bitmapPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
 
     private val dimPaint = Paint().apply {
-        color = Color.parseColor("#A6000000") // Semi-transparent overlay
+        color = Color.parseColor("#A6000000") // 半透明遮罩
         style = Paint.Style.FILL
     }
 
     private val framePaint = Paint().apply {
-        color = Color.parseColor("#00E676") // Bright green border
+        color = Color.parseColor("#00E676") // 亮绿色边框
         style = Paint.Style.STROKE
         strokeWidth = 4f
         isAntiAlias = true
@@ -139,7 +139,7 @@ class CropOverlayView @JvmOverloads constructor(
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
 
-        // 1. Draw source bitmap exactly inside imageDstRect
+        // 1. 将源位图精确绘制到 imageDstRect 内
         srcBitmap?.let { bitmap ->
             val srcRect = Rect(0, 0, bitmap.width, bitmap.height)
             canvas.drawBitmap(bitmap, srcRect, imageDstRect, bitmapPaint)
@@ -150,13 +150,13 @@ class CropOverlayView @JvmOverloads constructor(
         val vW = width.toFloat()
         val vH = height.toFloat()
 
-        // 2. Draw dim background around crop box
+        // 2. 绘制裁剪框四周的暗色背景
         canvas.drawRect(0f, 0f, vW, cropRect.top, dimPaint)
         canvas.drawRect(0f, cropRect.top, cropRect.left, cropRect.bottom, dimPaint)
         canvas.drawRect(cropRect.right, cropRect.top, vW, cropRect.bottom, dimPaint)
         canvas.drawRect(0f, cropRect.bottom, vW, vH, dimPaint)
 
-        // 3. Draw Crop Frame & Rule of Thirds Grid
+        // 3. 绘制裁剪框与三分法参考线网格
         canvas.drawRect(cropRect, framePaint)
 
         val thirdW = cropRect.width() / 3f
@@ -166,7 +166,7 @@ class CropOverlayView @JvmOverloads constructor(
         canvas.drawLine(cropRect.left, cropRect.top + thirdH, cropRect.right, cropRect.top + thirdH, gridPaint)
         canvas.drawLine(cropRect.left, cropRect.top + thirdH * 2, cropRect.right, cropRect.top + thirdH * 2, gridPaint)
 
-        // 4. Draw Corner Handles
+        // 4. 绘制四角手柄
         canvas.drawCircle(cropRect.left, cropRect.top, handleRadius, handlePaint)
         canvas.drawCircle(cropRect.right, cropRect.top, handleRadius, handlePaint)
         canvas.drawCircle(cropRect.left, cropRect.bottom, handleRadius, handlePaint)
@@ -312,7 +312,7 @@ class CropOverlayView @JvmOverloads constructor(
     }
 
     /**
-     * Returns normalized crop bounds STRICTLY relative to the rendered bitmap inside imageDstRect!
+     * 返回严格相对于 imageDstRect 内所渲染位图的归一化裁剪边界！
      */
     fun getNormalizedCropRect(): RectF {
         if (imageDstRect.width() <= 0f || imageDstRect.height() <= 0f) {

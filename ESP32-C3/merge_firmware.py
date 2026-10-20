@@ -1,11 +1,10 @@
 Import("env")
 import os
 
-# The merged image is the ONLY artefact worth keeping: it already contains
-# bootloader + partition table + app, so it is flashed at offset 0x0 in one go.
-# After every build it is copied to this project's own bin/ directory under a
-# stable name, so the flashing / release workflow never has to guess which file
-# in .pio/build/ is the right one.
+# 合并镜像（merged image）是唯一值得保留的产物：它已经包含 bootloader + 分区表
+# + app，所以只需在偏移 0x0 处一次烧录即可。每次构建完成后，它都会以固定的
+# 文件名被复制到本项目自己的 bin/ 目录下，因此烧录 / 发布流程
+# 永远不必去猜 .pio/build/ 里哪一个文件才是正确的那个。
 PUBLISHED_NAME = "8adge_BLE_398_A1.bin"
 MANIFEST_NAME = "SHA256.txt"
 
@@ -25,7 +24,7 @@ def publish_merged_bin(env, merged_path):
         data = f.read()
     sha256 = hashlib.sha256(data).hexdigest().upper()
 
-    # Three-line manifest: name, byte count, SHA256.
+    # 三行清单：文件名、字节数、SHA256。
     manifest = os.path.join(bin_dir, MANIFEST_NAME)
     with open(manifest, "w", encoding="utf-8", newline="\n") as f:
         f.write("{}\n  {} bytes\n  {}\n".format(PUBLISHED_NAME, len(data), sha256))

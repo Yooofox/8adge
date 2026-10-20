@@ -29,12 +29,12 @@ class LogAdapter : ListAdapter<LogMessage, LogAdapter.LogViewHolder>(DiffCallbac
             binding.textLogContent.text = "[${item.type}] ${item.message}"
 
             val color = when (item.type) {
-                LogType.INFO -> Color.parseColor("#80D8FF")    // Cyan / Light Blue
-                LogType.SUCCESS -> Color.parseColor("#B9F6CA") // Light Green
-                LogType.WARNING -> Color.parseColor("#FFE082") // Amber / Yellow
-                LogType.ERROR -> Color.parseColor("#FF8A80")   // Red
-                LogType.BLE_TX -> Color.parseColor("#EA80FC")  // Purple / Pink
-                LogType.BLE_RX -> Color.parseColor("#A7FFEB")  // Teal
+                LogType.INFO -> Color.parseColor("#80D8FF")    // 青色 / 浅蓝
+                LogType.SUCCESS -> Color.parseColor("#B9F6CA") // 浅绿色
+                LogType.WARNING -> Color.parseColor("#FFE082") // 琥珀色 / 黄色
+                LogType.ERROR -> Color.parseColor("#FF8A80")   // 红色
+                LogType.BLE_TX -> Color.parseColor("#EA80FC")  // 紫色 / 粉红色
+                LogType.BLE_RX -> Color.parseColor("#A7FFEB")  // 青绿色
             }
             binding.textLogContent.setTextColor(color)
         }

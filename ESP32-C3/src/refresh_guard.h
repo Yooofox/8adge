@@ -5,160 +5,139 @@
 #include <stdint.h>
 
 // ============================================================================
-//  Full-refresh cooldown - panel protection against irreversible ghosting.
+//  整屏刷新冷却 - 针对不可逆残影的面板保护。
 //
-//  A 4-colour e-paper refresh is not "set a pixel": the controller drives a
-//  long bipolar AC waveform (15-25 s here) that physically moves red, yellow,
-//  black and white pigment particles through the microcapsule fluid. The
-//  coloured pigments have low electrophoretic mobility, so a refresh that
-//  starts before the previous one has settled makes particles of opposite
-//  polarity clump together. The result is irreversible: colour contamination,
-//  a red-tinted white, and grey ghosting that no amount of "refresh to white"
-//  removes. Charge also accumulates on the ITO layer and the dielectric film.
+//  4 色墨水屏的一次刷新不是「设置一个像素」：控制器会驱动一段很长的双极性交流
+//  波形（这里是 15-25 s），把红、黄、黑、白颜料粒子在微胶囊液体中物理搬移。
+//  彩色颜料的电泳迁移率很低，因此在上一次刷新尚未稳定之前就开始的刷新，会让
+//  极性相反的粒子聚团。结果是不可逆的：颜色污染、偏红的白色，以及无论怎样
+//  「刷成白屏」都去不掉的灰色残影。电荷还会在 ITO 层和介电膜上积累。
 //
-//  Panel vendors (E Ink, Good Display, Waveshare) therefore specify a minimum
-//  interval of >= 180 s between full refreshes on 4-colour parts, and most
-//  disable partial refresh entirely in the controller. This firmware has no
-//  partial-refresh path, but nothing stopped an app - or a user hammering the
-//  BOOT button - from repainting every few seconds. This module is that brake.
+//  因此面板厂商（E Ink、Good Display、Waveshare）规定 4 色产品两次整屏刷新之间
+//  的最小间隔 >= 180 s，而且多数厂商在控制器里干脆禁用局部刷新。本固件没有局部
+//  刷新通路，但过去没有什么能阻止 App - 或者一个狂按 BOOT 键的用户 - 每隔几秒
+//  重绘一次。本模块就是那个刹车。
 //
-//  ------------------------------------------------------------------ the clock problem
+//  ------------------------------------------------------------------ 时钟问题
 //
-//  The cooldown needs "how long ago was the last refresh", and this board has
-//  no way to know the time on its own:
+//  冷却需要知道「上次刷新是多久以前」，而这块板子自己无从知道时间：
 //
-//    * the device never connects to anything (BLE only, no WiFi, no SNTP);
-//    * millis() restarts at 0 on every power-up;
-//    * RTC slow memory (RTC_DATA_ATTR) survives deep sleep and a software
-//      reset, but NOT a power cut - and the C3-SuperMini has no VBAT pin, so
-//      the RTC domain dies with the supply. Its contents are also undefined
-//      after a power-on reset;
-//    * NVS keeps a number, but a number is useless without knowing "now".
+//    * 设备从不连接任何东西（只有 BLE，没有 WiFi，没有 SNTP）；
+//    * millis() 在每次上电时从 0 重新开始；
+//    * RTC 慢速内存（RTC_DATA_ATTR）能挺过深度睡眠和软件复位，但挺不过断电 -
+//      而 C3-SuperMini 没有 VBAT 引脚，所以 RTC 域随供电一起消亡。上电复位后
+//      它的内容也是未定义的；
+//    * NVS 能保存一个数字，但不知道「现在」时，数字是没有用的。
 //
-//  So the *clock comes from the app*: it sends BLE_OP_SYNC_TIME with UTC
-//  seconds right after connecting (see docs/BLE_PROTOCOL.md). The device then
-//  keeps time itself by anchoring that value to its own monotonic uptime, and
-//  persists the last refresh to NVS so a long power-off is not punished.
+//  所以*时钟来自 App*：它在连接后立刻发送带 UTC 秒的 BLE_OP_SYNC_TIME
+//  （见 docs/BLE_PROTOCOL.md）。设备随后把这个值锚定到自己的单调运行时间上来
+//  自己走时，并把最近一次刷新持久化到 NVS，使长时间的断电不受惩罚。
 //
-//  ------------------------------------------------------------------ the invariant
+//  ------------------------------------------------------------------ 不变式
 //
-//  Guaranteeing the cooldown cannot depend on having a clock, because the idle
-//  hint screen has to be drawn when nobody is connected - i.e. exactly when no
-//  clock is available. That is what this inequality is for:
+//  保证冷却不能依赖是否有时钟，因为空闲提示屏必须在无人连接时绘制 - 也就是
+//  恰恰没有时钟可用的时候。下面这个不等式就是为此而设：
 //
-//      real elapsed time since the last refresh  >=  uptime
+//      距上次刷新的真实经过时间  >=  运行时间（uptime）
 //
-//  because the last refresh happened either before this power-up (so the real
-//  elapsed time is the off-air time *plus* uptime, and off-air time >= 0) or
-//  during this power-up (so the uptime difference is the elapsed time exactly).
+//  因为上次刷新要么发生在本次上电之前（那么真实经过时间就是停机时间*加上*
+//  运行时间，而停机时间 >= 0），要么发生在本次上电期间（那么运行时间之差就
+//  正好是经过时间）。
 //
-//  "Wait until uptime >= 180 s" is therefore always compliant, only ever
-//  conservative. With a clock the rule becomes exact; with a stored NVS
-//  timestamp it is also *permissive*, because a device that was unplugged for
-//  three days does not have to sit through 180 s of uptime before its first
-//  refresh.
+//  因此「等到运行时间 >= 180 s」永远是合规的，只是偏保守。有时钟时该规则变得
+//  精确；有 NVS 里保存的时间戳时它还会*更宽松*，因为一台拔电三天的设备不必在
+//  首次刷新前先坐等 180 s 运行时间。
 //
-//  ------------------------------------------------------------------ two states of the record
+//  ------------------------------------------------------------------ 记录的两种状态
 //
-//  A refresh that happens while the clock is unknown cannot be dated. Such a
-//  refresh is recorded as UNDATED and the guard then keeps using the uptime
-//  bound for the rest of that power cycle - including after the app finally
-//  syncs, because using the older dated timestamp would overestimate how long
-//  ago the newest refresh was, which is the one unsafe direction. UNDATED is
-//  persisted, so a power cut between the undated refresh and the sync cannot
-//  resurrect a stale timestamp either.
+//  在时钟未知时发生的那次刷新无法标注日期。这样的刷新会被记为 UNDATED，此后
+//  guard 在该次上电周期内一直沿用运行时间下界 - 包括 App 最终同步之后也一样，
+//  因为使用更早的那个带日期时间戳会高估最新一次刷新已经过去多久，而这正是唯一
+//  不安全的方向。UNDATED 会被持久化，所以无日期刷新与同步之间发生断电，也不会
+//  让一个过期时间戳复活。
 // ============================================================================
 
-// Load the persisted record and reset the session's uptime reference.
-// Call once from setup(), before the panel can be painted.
+// 加载持久化的记录，并重置本会话的运行时间基准。
+// 在 setup() 里调用一次，且在面板可能被绘制之前。
 void refreshGuardInit();
 
-// ---------------------------------------------------------------- clock
+// ---------------------------------------------------------------- 时钟
 
-// Adopt the app's clock: `unixUtc` is seconds since the epoch, UTC.
+// 采用 App 的时钟：`unixUtc` 是自纪元起的 UTC 秒数。
 //
-// UTC and not local time on purpose: only differences are ever computed, and a
-// difference is a timezone-independent quantity - but a *local* timestamp is
-// not, because a DST transition inside the interval would shift the difference
-// by an hour. Sending UTC removes the whole class of problems.
+// 有意使用 UTC 而不是本地时间：这里只做差值计算，而差值与时区无关 - 但*本地*
+// 时间戳不是，因为区间内出现一次 DST 切换就会让差值偏移一小时。发送 UTC 消除了
+// 这一整类问题。
 //
-// Returns false for an implausible value (before 2001 or after 2100), which is
-// what catches the classic mistake of sending milliseconds instead of seconds.
+// 对不合理的值（早于 2001 年或晚于 2100 年）返回 false，这正是用来抓「把毫秒
+// 当成秒发送」这个经典错误的手段。
 bool refreshGuardSyncClock(uint64_t unixUtc);
 
-// True once the app has supplied a clock this power cycle.
+// 本次上电周期内 App 已经提供过时钟之后为 true。
 bool refreshGuardClockKnown();
 
-// Current UTC seconds, or 0 when the clock is unknown.
+// 当前 UTC 秒，时钟未知时为 0。
 uint32_t refreshGuardNowUtc();
 
-// The UTC timestamp of the last refresh, or 0 when there is none or it could
-// not be dated.
+// 上次刷新的 UTC 时间戳；没有记录或无法标注日期时为 0。
 uint32_t refreshGuardLastRefreshUtc();
 
-// ---------------------------------------------------------------- the rule
+// ---------------------------------------------------------------- 规则
 
-// The advertised minimum interval between full refreshes, in seconds.
+// 对外公布的两整屏刷新之间的最小间隔，单位秒。
 uint16_t refreshGuardMinGapSeconds();
 
-// True when the cooldown has elapsed. This is the rule alone; it knows nothing
-// about a user confirmation (see refreshGuardMayRefresh()).
+// 冷却已过则为 true。这只是规则本身；它不知道用户确认的存在
+// （见 refreshGuardMayRefresh()）。
 bool refreshGuardAllowed();
 
-// True when a full refresh may be started right now for `opcode`
-// (BLE_OP_BEGIN_IMAGE / BLE_OP_SHOW_HINT): the cooldown has elapsed, or the app
-// obtained a confirmation grant *for that same command* after showing the user
-// a warning. A grant is never shared between BEGIN_IMAGE and SHOW_HINT, and the
-// idle/BOOT hint (opcode 0) can never consume an app's grant.
+// 对于 `opcode`（BLE_OP_BEGIN_IMAGE / BLE_OP_SHOW_HINT）此刻可以开始整屏刷新时
+// 为 true：冷却已过，或者 App 在向用户显示警告后取得了*针对同一条命令*的确认
+// 授权。授权绝不会在 BEGIN_IMAGE 与 SHOW_HINT 之间共享，空闲/BOOT 提示
+// （opcode 0）也永远不能消耗 App 的授权。
 //
-// The clock is untrusted. Within a power cycle the adopted time may not run
-// ahead of the device's own uptime by more than BLE_CLOCK_MAX_FORWARD_SKEW_S,
-// so a hostile app cannot fast-forward the cooldown by re-syncing. The first
-// sync after power-up cannot be validated (no trusted time source exists on
-// this board); see the "trust boundary" note in docs/BLE_PROTOCOL.md.
+// 时钟是不可信的。在一次上电周期内，被采用的时钟最多只能超出设备自身运行时间
+// BLE_CLOCK_MAX_FORWARD_SKEW_S，所以恶意 App 无法通过重新同步来快进冷却。上电后
+// 的第一次同步无法被校验（这块板子上不存在可信时间源）；见 docs/BLE_PROTOCOL.md
+// 里的「trust boundary」说明。
 bool refreshGuardMayRefreshFor(uint8_t opcode);
 
-// Backwards-compatible shorthand for "no app command": cooldown only, never a
-// confirmation grant. Used by the autonomous hint paths.
+// 向后兼容的简写，表示「没有 App 命令」：只用冷却，绝不使用确认授权。由自动
+// 提示路径使用。
 bool refreshGuardMayRefresh();
 
-// Seconds still to wait; 0 when refreshGuardAllowed() is true.
+// 仍需等待的秒数；refreshGuardAllowed() 为 true 时为 0。
 uint32_t refreshGuardWaitSeconds();
 
-// Best estimate of how long ago the last refresh was. With a clock this is
-// exact; without one it is the lower bound described in the invariant above,
-// so it is safe to show to a user as "at least this long ago".
+// 上次刷新距今多久的最佳估计。有时钟时是精确值；没有时钟时就是上文不变式中描述的
+// 下界，所以可以安全地作为「至少这么久以前」展示给用户。
 uint32_t refreshGuardElapsedSeconds();
 
-// Reason code for EVT_REFRESH_BLOCKED (BLE_GUARD_REASON_*, ble_protocol.h).
+// EVT_REFRESH_BLOCKED 的原因码（BLE_GUARD_REASON_*，ble_protocol.h）。
 uint8_t refreshGuardReason();
 
-// ---------------------------------------------------------------- confirmation
+// ---------------------------------------------------------------- 确认
 
-// Mint the token that identifies one blocked request, together with the command
-// that was refused. The app echoes the token back in BLE_OP_CONFIRM_REFRESH; a
-// fresh call invalidates the previous token.
+// 生成标识某一次被拦截请求的令牌，同时记下被拒绝的命令。App 在
+// BLE_OP_CONFIRM_REFRESH 里把这个令牌回传；新的一次调用会让上一个令牌失效。
 uint8_t refreshGuardIssueToken(uint8_t forOpcode);
 
-// Arm a confirmation grant if `token` is the live token and has not expired.
-// Returns false for a stale, unknown or already-confirmed token, and also when
-// the previous refresh was itself forced and has not yet aged past the full
-// cooldown (a second forced refresh could otherwise damage the panel twice in
-// a row). The grant is bound to the opcode that was refused.
+// 如果 `token` 是当前有效令牌且尚未过期，就填装一份确认授权。只有过期、未知或已被
+// 用过的令牌才返回 false：用户一旦确认，这次刷新就放行，与距上次刷新过去了多久无关
+// —— 在这里设时间下限，正是当年让确认对话框“说了算却做不到”的原因。授权与被拒绝的
+// 那个 opcode 绑定，并且只覆盖一次绘制。
 bool refreshGuardArmGrant(uint8_t token);
 
-// True while a confirmation grant is armed and unexpired. The grant survives
-// until the panel is actually painted, so a transfer that fails on CRC does not
-// force the user to confirm a second time.
+// 确认授权已装填且未过期期间为 true。授权会一直保留到面板真正被绘制为止，因此
+// 一次因 CRC 而失败的传输不会迫使用户再确认一次。
 bool refreshGuardGrantLive();
 
-// Record that the panel has just completed a full refresh: moves the cooldown
-// reference, dates it if the clock is known, persists it, and consumes a
-// confirmation grant if (and only if) it belongs to `opcode` - the image path
-// passes BLE_OP_BEGIN_IMAGE, an app-requested hint BLE_OP_SHOW_HINT, and the
-// autonomous hint paths 0, so an unrelated approval is never cancelled.
-// MUST be called after every full refresh - the image path, the hint screen,
-// and a test pattern alike - or the guarantee is void.
+// 记录面板刚刚完成一次整屏刷新：移动冷却基准，若时钟已知则标注日期，持久化，
+// 并且当（且仅当）确认授权属于 `opcode` 时消耗它 - 图像路径传入
+// BLE_OP_BEGIN_IMAGE，App 请求的提示屏传 BLE_OP_SHOW_HINT，自动提示路径传 0，
+// 这样不相关的批准永远不会被取消。
+// 每次整屏刷新之后都必须调用 - 图像路径、提示屏和测试图案都一样 - 否则该保证
+// 就失效了。
 void refreshGuardNoteRefresh(uint8_t opcode);
 
 #endif // BADGE8_REFRESH_GUARD_H

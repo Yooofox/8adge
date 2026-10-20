@@ -14,25 +14,25 @@ class Crc32UnitTest {
 
     @Test
     fun testCrcVectorsFromProtocolDoc() {
-        // Test vector 1: "" -> 0x00000000
+        // 测试向量 1："" -> 0x00000000
         assertEquals(0x00000000L, calculateCrc("".toByteArray()))
 
-        // Test vector 2: "123456789" -> 0xCBF43926
+        // 测试向量 2："123456789" -> 0xCBF43926
         assertEquals(0xCBF43926L, calculateCrc("123456789".toByteArray(Charsets.US_ASCII)))
 
-        // Test vector 3: 105984 bytes of 0x55 (All white 2bpp) -> 0xC6FD3AF0
+        // 测试向量 3：105984 字节的 0x55（2bpp 全白）-> 0xC6FD3AF0
         val allWhite2bpp = ByteArray(105984) { 0x55.toByte() }
         assertEquals(0xC6FD3AF0L, calculateCrc(allWhite2bpp))
 
-        // Test vector 4: 105984 bytes of 0x00 (All black 2bpp) -> 0x2D69E75C
+        // 测试向量 4：105984 字节的 0x00（2bpp 全黑）-> 0x2D69E75C
         val allBlack2bpp = ByteArray(105984) { 0x00.toByte() }
         assertEquals(0x2D69E75CL, calculateCrc(allBlack2bpp))
 
-        // Test vector 5: 52992 bytes of 0xFF (All white 1bpp) -> 0xFC2E8495
+        // 测试向量 5：52992 字节的 0xFF（1bpp 全白）-> 0xFC2E8495
         val allWhite1bpp = ByteArray(52992) { 0xFF.toByte() }
         assertEquals(0xFC2E8495L, calculateCrc(allWhite1bpp))
 
-        // Test vector 6: 52992 bytes of 0x00 (All black 1bpp) -> 0x2F809144
+        // 测试向量 6：52992 字节的 0x00（1bpp 全黑）-> 0x2F809144
         val allBlack1bpp = ByteArray(52992) { 0x00.toByte() }
         assertEquals(0x2F809144L, calculateCrc(allBlack1bpp))
     }

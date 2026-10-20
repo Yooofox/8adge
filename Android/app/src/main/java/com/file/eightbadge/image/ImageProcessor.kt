@@ -23,11 +23,11 @@ object ImageProcessor {
     private fun getG(c: Int): Int = (c shr 8) and 0xFF
     private fun getB(c: Int): Int = c and 0xFF
 
-    // Simulated E-Paper Palette RGB Values for Real E-Paper Look (0=Black, 1=White, 2=Yellow, 3=Red)
-    val COLOR_BLACK = makeRgb(0, 0, 0)         // Code 0: Pure E-Paper Black #000000
-    val COLOR_WHITE = makeRgb(255, 255, 255)   // Code 1: Paper White #FFFFFF
-    val COLOR_YELLOW = makeRgb(230, 184, 0)    // Code 2: Simulated Real E-Paper Yellow #E6B800
-    val COLOR_RED = makeRgb(200, 40, 40)       // Code 3: Simulated Real E-Paper Red #C82828
+    // 模拟真实墨水屏观感的墨水屏调色板 RGB 值（0=黑，1=白，2=黄，3=红）
+    val COLOR_BLACK = makeRgb(0, 0, 0)         // 色码 0：纯墨水屏黑 #000000
+    val COLOR_WHITE = makeRgb(255, 255, 255)   // 色码 1：纸白 #FFFFFF
+    val COLOR_YELLOW = makeRgb(230, 184, 0)    // 色码 2：模拟真实墨水屏黄 #E6B800
+    val COLOR_RED = makeRgb(200, 40, 40)       // 色码 3：模拟真实墨水屏红 #C82828
 
     data class ProcessResult(
         val rawPayload: ByteArray,
@@ -59,7 +59,7 @@ object ImageProcessor {
     }
 
     /**
-     * Rotates bitmap by specified degrees (0, 90, 180, 270).
+     * 按指定角度（0、90、180、270）旋转位图。
      */
     fun rotateBitmap(src: Bitmap, degrees: Float): Bitmap {
         if (degrees % 360f == 0f) return src
@@ -69,7 +69,7 @@ object ImageProcessor {
     }
 
     /**
-     * Crops bitmap safely according to normalized crop rectangle (0.0..1.0 coordinates).
+     * 按归一化裁剪矩形（坐标范围 0.0..1.0）安全裁剪位图。
      */
     fun cropBitmap(src: Bitmap, normalizedCropRect: RectF): Bitmap {
         if (src.width <= 0 || src.height <= 0) return src
@@ -93,7 +93,7 @@ object ImageProcessor {
     }
 
     /**
-     * Main image processing function with dynamic resolution, crop, rotation, color adjustments & 14 dithering algorithms.
+     * 主图像处理函数：支持动态分辨率、裁剪、旋转、色彩调整与 14 种抖动算法。
      */
     fun processImage(
         srcBitmap: Bitmap,
@@ -103,11 +103,11 @@ object ImageProcessor {
         ditherMode: DitherMode = DitherMode.FLOYD_STEINBERG,
         rotationDegrees: Float = 0f,
         cropRect: RectF? = null,
-        brightness: Float = 0f,      // -100 to +100
-        contrast: Float = 1.0f,      // 0.5 to 2.0
-        saturation: Float = 1.0f,    // 0.0 to 2.5
-        gamma: Float = 1.0f,         // 0.2 to 3.0
-        sharpen: Float = 0f,         // 0 to 100
+        brightness: Float = 0f,      // -100 到 +100
+        contrast: Float = 1.0f,      // 0.5 到 2.0
+        saturation: Float = 1.0f,    // 0.0 到 2.5
+        gamma: Float = 1.0f,         // 0.2 到 3.0
+        sharpen: Float = 0f,         // 0 到 100
         invertColors: Boolean = false,
         ensureActive: (() -> Unit)? = null
     ): ProcessResult {
@@ -116,10 +116,10 @@ object ImageProcessor {
 
         ensureActive?.invoke()
 
-        // Step 1: Rotate
+        // 步骤 1：旋转
         val rotatedBitmap = rotateBitmap(srcBitmap, rotationDegrees)
 
-        // Step 2: Crop if specified
+        // 步骤 2：若指定了裁剪区域则裁剪
         val croppedBitmap = if (cropRect != null && (cropRect.left > 0f || cropRect.top > 0f || cropRect.right < 1f || cropRect.bottom < 1f)) {
             val cropped = cropBitmap(rotatedBitmap, cropRect)
             if (rotatedBitmap !== srcBitmap && rotatedBitmap !== cropped && !rotatedBitmap.isRecycled) {
@@ -133,7 +133,7 @@ object ImageProcessor {
         try {
             ensureActive?.invoke()
 
-            // Step 3: Scale and Color adjust (brightness, contrast, saturation, gamma, sharpen, invert)
+            // 步骤 3：缩放与色彩调整（亮度、对比度、饱和度、Gamma、锐化、反色）
             val adjustedBitmap = scaleAndAdjust(
                 croppedBitmap, width, height, scaleMode,
                 brightness, contrast, saturation, gamma, sharpen, invertColors,
@@ -143,7 +143,7 @@ object ImageProcessor {
             try {
                 ensureActive?.invoke()
 
-                // Step 4: Quantize & Dither
+                // 步骤 4：量化与抖动
                 val result = if (format == ImageFormat.BPP2) {
                     process2bpp(adjustedBitmap, width, height, ditherMode, orientation, ensureActive)
                 } else {
@@ -241,7 +241,7 @@ object ImageProcessor {
         paint.colorFilter = ColorMatrixColorFilter(cm)
         canvas.drawBitmap(src, null, dstRect, paint)
 
-        // Gamma Correction & Sharpening pixel pass if requested
+        // 若需要，执行 Gamma 校正与锐化的逐像素处理
         if (gamma != 1.0f || sharpen > 0f) {
             applyGammaAndSharpen(target, gamma, sharpen, ensureActive)
         }
@@ -261,7 +261,7 @@ object ImageProcessor {
             (corrected * 255.0).toInt()
         }
 
-        // 1. Gamma Correction
+        // 1. Gamma 校正
         if (gamma != 1.0f) {
             for (i in pixels.indices) {
                 val c = pixels[i]
@@ -272,7 +272,7 @@ object ImageProcessor {
             }
         }
 
-        // 2. Laplacian Sharpening
+        // 2. Laplacian 锐化
         if (sharpen > 0f) {
             val factor = (sharpen / 100f) * 1.5f
             val tempPixels = pixels.clone()
@@ -338,7 +338,7 @@ object ImageProcessor {
 
         val preview = Bitmap.createBitmap(previewPixels, w, h, Bitmap.Config.ARGB_8888)
 
-        // Ensure BLE transmission payload is mapped to physical panel dimensions (552 x 768)
+        // 确保 BLE 传输负载映射为设备要求的 552 × 768 画布布局
         val panelIndices = rotatePaletteToPhysicalPanel(paletteIndices, w, h, orientation)
         val panelW = if (orientation == ScreenOrientation.PORTRAIT) w else 552
         val panelH = if (orientation == ScreenOrientation.PORTRAIT) h else 768
@@ -383,7 +383,7 @@ object ImageProcessor {
 
         val preview = Bitmap.createBitmap(previewPixels, w, h, Bitmap.Config.ARGB_8888)
 
-        // Ensure BLE transmission payload is mapped to physical panel dimensions (552 x 768)
+        // 确保 BLE 传输负载映射为设备要求的 552 × 768 画布布局
         val panelIndices = rotatePaletteToPhysicalPanel(paletteIndices, w, h, orientation)
         val panelW = if (orientation == ScreenOrientation.PORTRAIT) w else 552
         val panelH = if (orientation == ScreenOrientation.PORTRAIT) h else 768
@@ -395,10 +395,10 @@ object ImageProcessor {
     }
 
     /**
-     * Maps palette indices array to physical panel dimensions (552 x 768).
-     * If orientation is PORTRAIT (552x768), palette is already 552x768.
-     * If orientation is LANDSCAPE (768x552), rotates 768x552 palette indices into 552x768 panel frame buffer
-     * so that line stride aligns with physical e-paper hardware driver (138 bytes / row for 768 rows).
+     * 将调色板索引数组映射为设备要求的 552 × 768 画布布局。
+     * 若方向为 PORTRAIT（552x768），调色板本身已是 552x768，直接返回。
+     * 若方向为 LANDSCAPE（768x552），则把 768x552 的调色板索引旋转进 552x768 的画布帧缓冲，
+     * 使行宽与设备端画布坐标布局对齐（每行 138 字节 / 共 768 行）。
      */
     fun rotatePaletteToPhysicalPanel(
         paletteIndices: IntArray,
@@ -410,8 +410,8 @@ object ImageProcessor {
             return paletteIndices
         }
 
-        // srcW = 768, srcH = 552
-        // Target physical panel: panelW = 552, panelH = 768
+        // srcW = 768，srcH = 552
+        // 目标画布帧缓冲：panelW = 552，panelH = 768
         val panelW = 552
         val panelH = 768
         val panelIndices = IntArray(panelW * panelH)
@@ -420,7 +420,7 @@ object ImageProcessor {
             for (x in 0 until srcW) {
                 val srcIdx = y * srcW + x
 
-                // Counter-clockwise -90° (180° flip from previous +90°) so landscape orientation aligns correctly:
+                // 旋转 -90°（相对之前的 +90° 翻转 180°），使横屏方向正确对齐：
                 // px = y              (0..551)
                 // py = 768 - 1 - x    (0..767)
                 val px = y
@@ -433,7 +433,7 @@ object ImageProcessor {
         return panelIndices
     }
 
-    // --- 14 Dithering Implementation Algorithms ---
+    // --- 14 种抖动算法实现 ---
 
     private fun floydSteinbergDither2bpp(srcPixels: IntArray, w: Int, h: Int, paletteRGB: IntArray, outIndices: IntArray, outPreviewPixels: IntArray, ensureActive: (() -> Unit)? = null) {
         val rErr = FloatArray(w * h)
@@ -914,7 +914,7 @@ object ImageProcessor {
         }
     }
 
-    // --- 1bpp Dithering Implementation Variants ---
+    // --- 1bpp 抖动算法实现变体 ---
 
     private fun floydSteinbergDither1bpp(srcPixels: IntArray, w: Int, h: Int, paletteRGB: IntArray, outIndices: IntArray, outPreviewPixels: IntArray, ensureActive: (() -> Unit)? = null) {
         val grayErr = FloatArray(w * h)
@@ -1322,13 +1322,13 @@ object ImageProcessor {
         val g = gIn.coerceIn(0f, 255f)
         val b = bIn.coerceIn(0f, 255f)
 
-        // 1bpp Mode (Black & White)
+        // 1bpp 模式（黑白）
         if (paletteRGB.size == 2) {
             val gray = 0.299f * r + 0.587f * g + 0.114f * b
             return if (gray > 127.5f) 1 else 0
         }
 
-        // 2bpp 4-Color Mode (Code 0=Black, 1=White, 2=Yellow, 3=Red)
+        // 2bpp 四色模式（色码 0=黑，1=白，2=黄，3=红）
         val maxC = maxOf(r, maxOf(g, b))
         val minC = minOf(r, minOf(g, b))
         val delta = maxC - minC
@@ -1336,11 +1336,11 @@ object ImageProcessor {
         val v = maxC / 255f
         val s = if (maxC <= 0f) 0f else delta / maxC
 
-        // 1. Extreme Luminance Thresholds -> Direct Pure Black or Pure White
-        if (v < 0.15f) return 0 // Black
-        if (v > 0.90f && s < 0.12f) return 1 // White
+        // 1. 极端亮度阈值 -> 直接返回纯黑或纯白
+        if (v < 0.15f) return 0 // 黑
+        if (v > 0.90f && s < 0.12f) return 1 // 白
 
-        // 2. Perception Hue Override for Non-Native Colors (Blue, Green, Purple) on 4-Color E-Paper
+        // 2. 四色墨水屏上非原生色（蓝、绿、紫）的感知色相覆盖
         if (s > 0.20f) {
             val h = if (delta <= 0f) {
                 0f
@@ -1354,18 +1354,18 @@ object ImageProcessor {
             }
 
             if (h in 70f..165f) {
-                // Green Zone -> E-Paper renders as Yellow (if bright) or Black (if dark)
+                // 绿色区间 -> 墨水屏渲染为黄色（偏亮时）或黑色（偏暗时）
                 return if (v > 0.40f) 2 else 0
             } else if (h in 165f..255f) {
-                // Blue/Cyan Zone -> E-Paper cannot render blue, map strictly to Paper White or Black
+                // 蓝/青区间 -> 墨水屏无法呈现蓝色，严格映射为纸白或黑色
                 return if (v > 0.55f) 1 else 0
             } else if (h in 255f..360f) {
-                // Purple/Magenta/Pink Zone -> E-Paper renders as Red (if bright) or Black (if dark)
+                // 紫/品红/粉区间 -> 墨水屏渲染为红色（偏亮时）或黑色（偏暗时）
                 return if (v > 0.35f) 3 else 0
             }
         }
 
-        // 3. Fallback: Perceptual Weighted Distance to Black, White, Yellow, Red
+        // 3. 兜底：到黑、白、黄、红的感知加权距离
         var minDistance = Float.MAX_VALUE
         var bestIndex = 0
 
@@ -1388,8 +1388,8 @@ object ImageProcessor {
     }
 
     /**
-     * Packs palette indices (0..3) into 2bpp byte array.
-     * High bits first: x=4k -> bits 7-6, x=4k+1 -> bits 5-4, x=4k+2 -> bits 3-2, x=4k+3 -> bits 1-0.
+     * 将调色板索引（0..3）打包为 2bpp 字节数组。
+     * 高位在前：x=4k -> 位 7-6，x=4k+1 -> 位 5-4，x=4k+2 -> 位 3-2，x=4k+3 -> 位 1-0。
      */
     fun pack2bpp(palette: IntArray, w: Int = 552, h: Int = 768): ByteArray {
         val bytesPerRow = (w + 3) / 4
@@ -1414,8 +1414,8 @@ object ImageProcessor {
     }
 
     /**
-     * Packs palette indices (0=Black, 1=White) into 1bpp byte array.
-     * Bit = 1 for White, Bit = 0 for Black. Bit 7 is leftmost.
+     * 将调色板索引（0=黑，1=白）打包为 1bpp 字节数组。
+     * 位 = 1 表示白，位 = 0 表示黑。位 7 为最左侧。
      */
     fun pack1bpp(palette: IntArray, w: Int = 552, h: Int = 768): ByteArray {
         val bytesPerRow = (w + 7) / 8
@@ -1449,7 +1449,7 @@ object ImageProcessor {
     }
 
     /**
-     * Generates built-in test patterns for vertical (552x768) or horizontal (768x552).
+     * 生成内置测试图案，用于竖屏（552x768）或横屏（768x552）。
      */
     fun generateTestPattern(patternType: String, orientation: ScreenOrientation = ScreenOrientation.PORTRAIT): Bitmap {
         val width = orientation.width
@@ -1462,23 +1462,23 @@ object ImageProcessor {
             "YELLOW_RED_TEST" -> {
                 val paint = Paint()
 
-                // Left Yellow
+                // 左侧黄色
                 paint.color = COLOR_YELLOW
                 canvas.drawRect(Rect(0, 0, width / 2, height), paint)
 
-                // Right Red
+                // 右侧红色
                 paint.color = COLOR_RED
                 canvas.drawRect(Rect(width / 2, 0, width, height), paint)
 
-                // Top Black Bar
+                // 顶部黑色条
                 paint.color = COLOR_BLACK
                 canvas.drawRect(Rect(0, 0, width, 60), paint)
 
-                // Bottom White Bar
+                // 底部白色条
                 paint.color = COLOR_WHITE
                 canvas.drawRect(Rect(0, height - 60, width, height), paint)
 
-                // Text
+                // 文字
                 paint.color = COLOR_WHITE
                 paint.textSize = 32f
                 paint.isFakeBoldText = true
@@ -1514,7 +1514,7 @@ object ImageProcessor {
                 val paint = Paint()
                 val hsv = floatArrayOf(0f, 1.0f, 1.0f)
                 for (y in 0 until height) {
-                    // Smoothly transition Hue from 0° (Red) at top to 280° (Purple) at bottom
+                    // 色相从顶部 0°（红）平滑过渡到底部 280°（紫）
                     hsv[0] = (y.toFloat() / (height - 1)) * 280f
                     paint.color = Color.HSVToColor(hsv)
                     canvas.drawLine(0f, y.toFloat(), width.toFloat(), y.toFloat(), paint)

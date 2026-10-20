@@ -46,7 +46,7 @@ class MainActivity : AppCompatActivity() {
     private var testDialog: androidx.appcompat.app.AlertDialog? = null
     private var testDialogJob: Job? = null
 
-    // Gallery Picker Contract
+    // 相册选择器契约
     private val getContentLauncher = registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         uri?.let {
             val bitmap = decodeSampledBitmapFromUri(it, reqWidth = 2048, reqHeight = 2048)
@@ -93,7 +93,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // Runtime Permission Request Contract
+    // 运行时权限请求契约
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
@@ -110,7 +110,7 @@ class MainActivity : AppCompatActivity() {
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        // Handle System Insets to avoid status bar overlap
+        // 处理系统窗口内边距，避免与状态栏重叠
         ViewCompat.setOnApplyWindowInsetsListener(binding.main) { _, insets ->
             val systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
             binding.appBarLayout.setPadding(0, systemBars.top, 0, 0)
@@ -137,7 +137,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setupUI() {
-        // Top Bar Buttons
+        // 顶栏按钮
         binding.btnSearchDevice.setOnClickListener {
             showDeviceSearchDialog()
         }
@@ -146,7 +146,7 @@ class MainActivity : AppCompatActivity() {
             showTestPanelDialog()
         }
 
-        // Orientation Radio
+        // 屏幕方向单选按钮
         binding.radioGroupOrientation.setOnCheckedChangeListener { _, checkedId ->
             val orient = if (checkedId == R.id.radioOrientPortrait) ScreenOrientation.PORTRAIT else ScreenOrientation.LANDSCAPE
             viewModel.screenOrientation.value = orient
@@ -154,7 +154,7 @@ class MainActivity : AppCompatActivity() {
             viewModel.processCurrentImage()
         }
 
-        // Image Selection & Editing Buttons
+        // 图片选择与编辑按钮
         binding.btnPickGallery.setOnClickListener {
             getContentLauncher.launch("image/*")
         }
@@ -166,7 +166,7 @@ class MainActivity : AppCompatActivity() {
             viewModel.resetCrop()
         }
 
-        // Color Adjustment Sliders: Saturation, Contrast, Brightness, Gamma, Sharpen, Invert
+        // 色彩调整滑块：饱和度、对比度、亮度、Gamma、锐化、反色
         binding.sliderSaturation.addOnChangeListener { _, value, fromUser ->
             if (fromUser) {
                 viewModel.saturation.value = value
@@ -229,13 +229,13 @@ class MainActivity : AppCompatActivity() {
             viewModel.resetAdjustments()
         }
 
-        // Format Radio
+        // 传输编码格式单选按钮
         binding.radioGroupFormat.setOnCheckedChangeListener { _, checkedId ->
             viewModel.imageFormat.value = if (checkedId == R.id.radioFormat2bpp) ImageFormat.BPP2 else ImageFormat.BPP1
             viewModel.processCurrentImage()
         }
 
-        // Scale Radio
+        // 图像缩放模式单选按钮
         binding.radioGroupScale.setOnCheckedChangeListener { _, checkedId ->
             viewModel.scaleMode.value = when (checkedId) {
                 R.id.radioScaleFit -> ScaleMode.FIT_PAD
@@ -245,7 +245,7 @@ class MainActivity : AppCompatActivity() {
             viewModel.processCurrentImage()
         }
 
-        // 14 Dithering Algorithms Vertical Wheel Picker (Scroll like Clock Time Picker)
+        // 14 种抖动算法的垂直滚轮选择器（上下滚动，类似时钟时间选择器）
         val ditherDisplayNames = DitherMode.entries.map { it.displayName }.toTypedArray()
         binding.pickerDitherMode.apply {
             displayedValues = null
@@ -263,7 +263,7 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        // Send Button
+        // 发送按钮
         binding.btnSendImage.setOnClickListener {
             viewModel.sendCurrentImageToEpaper()
         }
@@ -274,7 +274,7 @@ class MainActivity : AppCompatActivity() {
 
         val dialogAdapter = DeviceAdapter { deviceItem ->
             viewModel.connectDevice(deviceItem)
-            searchDialog?.dismiss() // Automatically dismiss search dialog on connection
+            searchDialog?.dismiss() // 连接后自动关闭搜索对话框
         }
 
         dialogBinding.dialogRecyclerDevices.apply {
@@ -302,7 +302,7 @@ class MainActivity : AppCompatActivity() {
             .create()
 
         searchDialog?.show()
-        viewModel.startScan() // Trigger scan on dialog open
+        viewModel.startScan() // 打开对话框时触发扫描
 
         searchDialogJob?.cancel()
         searchDialogJob = lifecycleScope.launch {
@@ -337,7 +337,7 @@ class MainActivity : AppCompatActivity() {
         dialogBinding.dialogBtnPing.setOnClickListener { viewModel.sendPing() }
         dialogBinding.dialogBtnDisconnect.setOnClickListener { viewModel.disconnectDevice() }
 
-        // Load AND immediately send test pattern on click
+        // 点击时加载并立即发送测试图案
         dialogBinding.dialogBtnTestYellowRed.setOnClickListener {
             viewModel.loadAndSendTestPattern("YELLOW_RED_TEST")
         }
@@ -611,7 +611,7 @@ class MainActivity : AppCompatActivity() {
         val elapsedText = if (event.reason == 0) "至少 ${event.elapsedSeconds} 秒" else "${event.elapsedSeconds} 秒"
         val message = "距上次刷屏 $elapsedText（建议 ≥ ${event.minGapSeconds} 秒，还需等待 ${event.waitSeconds} 秒）。\n\n" +
                 "四色墨水屏刷新间隔不足会导致颜料粒子团聚，造成不可逆的物理残影与串色损伤。\n\n" +
-                "确定要现在强制放行并刷新吗？"
+                "确定要现在强制放行并立即刷新吗？（确认后不再等待冷却）"
 
         refreshBlockedDialog = MaterialAlertDialogBuilder(this)
             .setTitle("面板尚未冷却")

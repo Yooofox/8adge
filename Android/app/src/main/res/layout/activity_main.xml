@@ -1,538 +1,538 @@
 <?xml version="1.0" encoding="utf-8"?>
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:app="http://schemas.android.com/apk/res-auto"
-    xmlns:tools="http://schemas.android.com/tools"
-    android:id="@+id/main"
-    android:layout_width="match_parent"
-    android:layout_height="match_parent"
-    android:background="?attr/colorSurface"
-    tools:context=".MainActivity">
-
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:orientation="vertical">
-
-        <!-- Top App Bar -->
-        <com.google.android.material.appbar.AppBarLayout
-            android:id="@+id/appBarLayout"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            app:elevation="0dp">
-
-            <com.google.android.material.appbar.MaterialToolbar
-                android:id="@+id/toolbar"
-                android:layout_width="match_parent"
-                android:layout_height="?attr/actionBarSize"
-                android:background="?attr/colorSurface">
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="match_parent"
-                    android:gravity="center_vertical"
-                    android:orientation="horizontal"
-                    android:paddingEnd="12dp">
-
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/btnConnectionStatus"
-                        style="@style/Widget.Material3.Button"
-                        android:layout_width="wrap_content"
-                        android:layout_height="36dp"
-                        android:insetTop="0dp"
-                        android:insetBottom="0dp"
-                        android:paddingHorizontal="12dp"
-                        android:paddingVertical="0dp"
-                        android:text="未连接"
-                        android:textColor="#FFFFFF"
-                        android:textSize="12sp"
-                        app:backgroundTint="?attr/colorError"
-                        app:cornerRadius="18dp" />
-
-                    <View
-                        android:layout_width="0dp"
-                        android:layout_height="0dp"
-                        android:layout_weight="1" />
-
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/btnSearchDevice"
-                        style="@style/Widget.Material3.Button.TonalButton"
-                        android:layout_width="wrap_content"
-                        android:layout_height="36dp"
-                        android:layout_marginEnd="6dp"
-                        android:insetTop="0dp"
-                        android:insetBottom="0dp"
-                        android:paddingHorizontal="12dp"
-                        android:paddingVertical="0dp"
-                        android:text="搜索设备"
-                        android:textSize="12sp"
-                        app:cornerRadius="18dp" />
-
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/btnTestPanel"
-                        style="@style/Widget.Material3.Button.OutlinedButton"
-                        android:layout_width="wrap_content"
-                        android:layout_height="36dp"
-                        android:insetTop="0dp"
-                        android:insetBottom="0dp"
-                        android:paddingHorizontal="12dp"
-                        android:paddingVertical="0dp"
-                        android:text="日志"
-                        android:textColor="?attr/colorOnSurface"
-                        android:textSize="12sp"
-                        app:cornerRadius="18dp"
-                        app:strokeColor="?attr/colorOutline" />
-
-                </LinearLayout>
-
-            </com.google.android.material.appbar.MaterialToolbar>
-        </com.google.android.material.appbar.AppBarLayout>
-
-        <!-- Pinned Top Preview Frame -->
-        <com.google.android.material.card.MaterialCardView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginHorizontal="12dp"
-            android:layout_marginTop="4dp"
-            android:layout_marginBottom="8dp"
-            app:cardCornerRadius="16dp"
-            app:cardElevation="0dp"
-            app:strokeColor="?attr/colorOutlineVariant"
-            app:strokeWidth="1dp">
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:background="#161616"
-                android:gravity="center"
-                android:orientation="vertical"
-                android:padding="8dp">
-
-                <TextView
-                    android:id="@+id/textPreviewSub"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="预览"
-                    android:textColor="#00E676"
-                    android:textSize="12sp"
-                    android:textStyle="bold" />
-
-                <ImageView
-                    android:id="@+id/imagePreview"
-                    android:layout_width="match_parent"
-                    android:layout_height="250dp"
-                    android:layout_marginTop="4dp"
-                    android:adjustViewBounds="true"
-                    android:scaleType="fitCenter"
-                    tools:src="@drawable/ic_launcher_background" />
-
-            </LinearLayout>
-        </com.google.android.material.card.MaterialCardView>
-
-        <!-- Scrollable Image Studio Controls -->
-        <androidx.core.widget.NestedScrollView
-            android:layout_width="match_parent"
-            android:layout_height="0dp"
-            android:layout_weight="1"
-            android:fillViewport="true">
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:paddingHorizontal="12dp"
-                android:paddingBottom="72dp">
-
-                <!-- Card 1: Image Editing & Dithering Options (Selected Local Image) -->
-                <com.google.android.material.card.MaterialCardView
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginBottom="10dp"
-                    app:cardCornerRadius="16dp"
-                    app:cardElevation="0dp"
-                    app:strokeColor="?attr/colorOutlineVariant"
-                    app:strokeWidth="1dp">
-
-                    <LinearLayout
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:orientation="vertical"
-                        android:padding="12dp">
-
-                        <!-- Image Action Bar -->
-                        <LinearLayout
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:gravity="center_vertical"
-                            android:orientation="horizontal">
-
-                            <com.google.android.material.button.MaterialButton
-                                android:id="@+id/btnPickGallery"
-                                style="@style/Widget.Material3.Button"
-                                android:layout_width="0dp"
-                                android:layout_height="wrap_content"
-                                android:layout_marginEnd="8dp"
-                                android:layout_weight="1"
-                                android:text="选择本地相册图片" />
-
-                            <com.google.android.material.button.MaterialButton
-                                android:id="@+id/btnManualCrop"
-                                style="@style/Widget.Material3.Button.TonalButton"
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:text="手动裁切" />
-
-                        </LinearLayout>
-
-                        <LinearLayout
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:layout_marginTop="6dp"
-                            android:gravity="center_vertical"
-                            android:orientation="horizontal">
-
-                            <com.google.android.material.button.MaterialButton
-                                android:id="@+id/btnRotateLeft"
-                                style="@style/Widget.Material3.Button.OutlinedButton"
-                                android:layout_width="0dp"
-                                android:layout_height="wrap_content"
-                                android:layout_marginEnd="6dp"
-                                android:layout_weight="1"
-                                android:text="左旋 90°" />
-
-                            <com.google.android.material.button.MaterialButton
-                                android:id="@+id/btnRotateRight"
-                                style="@style/Widget.Material3.Button.OutlinedButton"
-                                android:layout_width="0dp"
-                                android:layout_height="wrap_content"
-                                android:layout_marginEnd="6dp"
-                                android:layout_weight="1"
-                                android:text="右旋 90°" />
-
-                            <com.google.android.material.button.MaterialButton
-                                android:id="@+id/btnResetEdit"
-                                style="@style/Widget.Material3.Button.TextButton"
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:text="重置编辑" />
-
-                        </LinearLayout>
-
-                        <!-- Screen Orientation Radio -->
-                        <TextView
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:layout_marginTop="8dp"
-                            android:text="屏幕方向"
-                            android:textColor="?attr/colorOnSurface"
-                            android:textSize="13sp"
-                            android:textStyle="bold" />
-
-                        <RadioGroup
-                            android:id="@+id/radioGroupOrientation"
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:orientation="horizontal">
-
-                            <RadioButton
-                                android:id="@+id/radioOrientPortrait"
-                                android:layout_width="0dp"
-                                android:layout_height="wrap_content"
-                                android:layout_weight="1"
-                                android:checked="true"
-                                android:text="竖屏" />
-
-                            <RadioButton
-                                android:id="@+id/radioOrientLandscape"
-                                android:layout_width="0dp"
-                                android:layout_height="wrap_content"
-                                android:layout_weight="1"
-                                android:text="横屏" />
-                        </RadioGroup>
-
-                        <!-- Option Group: Format -->
-                        <TextView
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:layout_marginTop="8dp"
-                            android:text="传输编码格式"
-                            android:textColor="?attr/colorOnSurface"
-                            android:textSize="13sp"
-                            android:textStyle="bold" />
-
-                        <RadioGroup
-                            android:id="@+id/radioGroupFormat"
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:orientation="horizontal">
-
-                            <RadioButton
-                                android:id="@+id/radioFormat2bpp"
-                                android:layout_width="0dp"
-                                android:layout_height="wrap_content"
-                                android:layout_weight="1"
-                                android:checked="true"
-                                android:text="4色 (高画质)" />
-
-                            <RadioButton
-                                android:id="@+id/radioFormat1bpp"
-                                android:layout_width="0dp"
-                                android:layout_height="wrap_content"
-                                android:layout_weight="1"
-                                android:text="黑白 (极速)" />
-                        </RadioGroup>
-
-                        <TextView
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:layout_marginTop="8dp"
-                            android:text="图像缩放模式"
-                            android:textColor="?attr/colorOnSurface"
-                            android:textSize="13sp"
-                            android:textStyle="bold" />
-
-                        <RadioGroup
-                            android:id="@+id/radioGroupScale"
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:orientation="horizontal">
-
-                            <RadioButton
-                                android:id="@+id/radioScaleCrop"
-                                android:layout_width="0dp"
-                                android:layout_height="wrap_content"
-                                android:layout_weight="1"
-                                android:checked="true"
-                                android:text="等比裁剪" />
-
-                            <RadioButton
-                                android:id="@+id/radioScaleFit"
-                                android:layout_width="0dp"
-                                android:layout_height="wrap_content"
-                                android:layout_weight="1"
-                                android:text="等比留白" />
-
-                            <RadioButton
-                                android:id="@+id/radioScaleStretch"
-                                android:layout_width="0dp"
-                                android:layout_height="wrap_content"
-                                android:layout_weight="1"
-                                android:text="拉伸铺满" />
-                        </RadioGroup>
-
-                        <!-- Vertical Wheel Picker for Dithering Algorithms -->
-                        <TextView
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:layout_marginTop="8dp"
-                            android:text="抖动算法 (上下滑动滚轮切换)"
-                            android:textColor="?attr/colorOnSurface"
-                            android:textSize="13sp"
-                            android:textStyle="bold" />
-
-                        <NumberPicker
-                            android:id="@+id/pickerDitherMode"
-                            android:layout_width="match_parent"
-                            android:layout_height="120dp"
-                            android:layout_marginTop="4dp" />
-
-                        <!-- Dithering Algorithm Detailed Description -->
-                        <TextView
-                            android:id="@+id/textDitherDescription"
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:layout_marginTop="6dp"
-                            android:background="?attr/colorSurfaceContainerHigh"
-                            android:padding="8dp"
-                            android:text="适合常规照片与人像。色彩过渡自然，是通用性最强的经典效果。"
-                            android:textColor="?attr/colorOnSurfaceVariant"
-                            android:textSize="12sp" />
-
-                    </LinearLayout>
-                </com.google.android.material.card.MaterialCardView>
-
-                <!-- Card 2: Image Color Adjustments -->
-                <com.google.android.material.card.MaterialCardView
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginBottom="10dp"
-                    app:cardCornerRadius="16dp"
-                    app:cardElevation="0dp"
-                    app:strokeColor="?attr/colorOutlineVariant"
-                    app:strokeWidth="1dp">
-
-                    <LinearLayout
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:orientation="vertical"
-                        android:padding="12dp">
-
-                        <LinearLayout
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:gravity="center_vertical"
-                            android:orientation="horizontal">
-
-                            <TextView
-                                android:layout_width="0dp"
-                                android:layout_height="wrap_content"
-                                android:layout_weight="1"
-                                android:text="图像色彩"
-                                android:textColor="?attr/colorOnSurface"
-                                android:textSize="14sp"
-                                android:textStyle="bold" />
-
-                            <com.google.android.material.button.MaterialButton
-                                android:id="@+id/btnResetAdjustments"
-                                style="@style/Widget.Material3.Button.TextButton"
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:padding="0dp"
-                                android:text="重置"
-                                android:textSize="12sp" />
-
-                        </LinearLayout>
-
-                        <!-- Saturation Slider -->
-                        <TextView
-                            android:id="@+id/textSaturationLabel"
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:layout_marginTop="2dp"
-                            android:text="饱和度: 1.00x"
-                            android:textColor="?attr/colorOnSurfaceVariant"
-                            android:textSize="12sp" />
-
-                        <com.google.android.material.slider.Slider
-                            android:id="@+id/sliderSaturation"
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:stepSize="0.05"
-                            android:value="1.0"
-                            android:valueFrom="0.0"
-                            android:valueTo="2.5" />
-
-                        <!-- Contrast Slider -->
-                        <TextView
-                            android:id="@+id/textContrastLabel"
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:layout_marginTop="2dp"
-                            android:text="对比度: 1.00x"
-                            android:textColor="?attr/colorOnSurfaceVariant"
-                            android:textSize="12sp" />
-
-                        <com.google.android.material.slider.Slider
-                            android:id="@+id/sliderContrast"
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:stepSize="0.05"
-                            android:value="1.0"
-                            android:valueFrom="0.5"
-                            android:valueTo="2.0" />
-
-                        <!-- Brightness Slider -->
-                        <TextView
-                            android:id="@+id/textBrightnessLabel"
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:layout_marginTop="2dp"
-                            android:text="亮度: 0"
-                            android:textColor="?attr/colorOnSurfaceVariant"
-                            android:textSize="12sp" />
-
-                        <com.google.android.material.slider.Slider
-                            android:id="@+id/sliderBrightness"
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:stepSize="1.0"
-                            android:value="0.0"
-                            android:valueFrom="-100.0"
-                            android:valueTo="100.0" />
-
-                        <!-- Gamma Correction Slider -->
-                        <TextView
-                            android:id="@+id/textGammaLabel"
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:layout_marginTop="2dp"
-                            android:text="伽马: 1.00"
-                            android:textColor="?attr/colorOnSurfaceVariant"
-                            android:textSize="12sp" />
-
-                        <com.google.android.material.slider.Slider
-                            android:id="@+id/sliderGamma"
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:stepSize="0.05"
-                            android:value="1.0"
-                            android:valueFrom="0.2"
-                            android:valueTo="3.0" />
-
-                        <!-- Sharpening Slider -->
-                        <TextView
-                            android:id="@+id/textSharpenLabel"
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:layout_marginTop="2dp"
-                            android:text="锐化: 0%"
-                            android:textColor="?attr/colorOnSurfaceVariant"
-                            android:textSize="12sp" />
-
-                        <com.google.android.material.slider.Slider
-                            android:id="@+id/sliderSharpen"
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:stepSize="1.0"
-                            android:value="0.0"
-                            android:valueFrom="0.0"
-                            android:valueTo="100.0" />
-
-                        <!-- Invert Colors Checkbox -->
-                        <com.google.android.material.checkbox.MaterialCheckBox
-                            android:id="@+id/checkInvertColors"
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:text="反色 / 负片效果" />
-
-                    </LinearLayout>
-                </com.google.android.material.card.MaterialCardView>
-
-            </LinearLayout>
-        </androidx.core.widget.NestedScrollView>
-
-    </LinearLayout>
-
-    <!-- Floating Compact Send Button (No Outer Frame, Normal Width for 2 Characters) -->
-    <LinearLayout
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_gravity="bottom|center_horizontal"
-        android:layout_marginBottom="16dp"
-        android:gravity="center"
-        android:orientation="vertical">
-
-        <com.google.android.material.progressindicator.LinearProgressIndicator
-            android:id="@+id/progressTransfer"
-            android:layout_width="120dp"
-            android:layout_height="wrap_content"
-            android:layout_marginBottom="6dp"
-            android:indeterminate="false"
-            android:visibility="gone"
-            app:trackCornerRadius="3dp"
-            app:trackThickness="4dp" />
-
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/btnSendImage"
-            style="@style/Widget.Material3.Button"
-            android:layout_width="wrap_content"
-            android:layout_height="48dp"
-            android:elevation="6dp"
-            android:paddingHorizontal="32dp"
-            android:text="发送"
-            android:textSize="16sp"
-            android:textStyle="bold"
-            app:cornerRadius="24dp" />
-
-    </LinearLayout>
+xmlns:app="http://schemas.android.com/apk/res-auto"
+xmlns:tools="http://schemas.android.com/tools"
+android:id="@+id/main"
+android:layout_width="match_parent"
+android:layout_height="match_parent"
+android:background="?attr/colorSurface"
+tools:context=".MainActivity">
+
+<LinearLayout
+android:layout_width="match_parent"
+android:layout_height="match_parent"
+android:orientation="vertical">
+
+        <!-- 顶部应用栏 -->
+<com.google.android.material.appbar.AppBarLayout
+android:id="@+id/appBarLayout"
+android:layout_width="match_parent"
+android:layout_height="wrap_content"
+app:elevation="0dp">
+
+<com.google.android.material.appbar.MaterialToolbar
+android:id="@+id/toolbar"
+android:layout_width="match_parent"
+android:layout_height="?attr/actionBarSize"
+android:background="?attr/colorSurface">
+
+<LinearLayout
+android:layout_width="match_parent"
+android:layout_height="match_parent"
+android:gravity="center_vertical"
+android:orientation="horizontal"
+android:paddingEnd="12dp">
+
+<com.google.android.material.button.MaterialButton
+android:id="@+id/btnConnectionStatus"
+style="@style/Widget.Material3.Button"
+android:layout_width="wrap_content"
+android:layout_height="36dp"
+android:insetTop="0dp"
+android:insetBottom="0dp"
+android:paddingHorizontal="12dp"
+android:paddingVertical="0dp"
+android:text="未连接"
+android:textColor="#FFFFFF"
+android:textSize="12sp"
+app:backgroundTint="?attr/colorError"
+app:cornerRadius="18dp" />
+
+<View
+android:layout_width="0dp"
+android:layout_height="0dp"
+android:layout_weight="1" />
+
+<com.google.android.material.button.MaterialButton
+android:id="@+id/btnSearchDevice"
+style="@style/Widget.Material3.Button.TonalButton"
+android:layout_width="wrap_content"
+android:layout_height="36dp"
+android:layout_marginEnd="6dp"
+android:insetTop="0dp"
+android:insetBottom="0dp"
+android:paddingHorizontal="12dp"
+android:paddingVertical="0dp"
+android:text="搜索设备"
+android:textSize="12sp"
+app:cornerRadius="18dp" />
+
+<com.google.android.material.button.MaterialButton
+android:id="@+id/btnTestPanel"
+style="@style/Widget.Material3.Button.OutlinedButton"
+android:layout_width="wrap_content"
+android:layout_height="36dp"
+android:insetTop="0dp"
+android:insetBottom="0dp"
+android:paddingHorizontal="12dp"
+android:paddingVertical="0dp"
+android:text="日志"
+android:textColor="?attr/colorOnSurface"
+android:textSize="12sp"
+app:cornerRadius="18dp"
+app:strokeColor="?attr/colorOutline" />
+
+</LinearLayout>
+
+</com.google.android.material.appbar.MaterialToolbar>
+</com.google.android.material.appbar.AppBarLayout>
+
+        <!-- 顶部固定预览框 -->
+<com.google.android.material.card.MaterialCardView
+android:layout_width="match_parent"
+android:layout_height="wrap_content"
+android:layout_marginHorizontal="12dp"
+android:layout_marginTop="4dp"
+android:layout_marginBottom="8dp"
+app:cardCornerRadius="16dp"
+app:cardElevation="0dp"
+app:strokeColor="?attr/colorOutlineVariant"
+app:strokeWidth="1dp">
+
+<LinearLayout
+android:layout_width="match_parent"
+android:layout_height="wrap_content"
+android:background="#161616"
+android:gravity="center"
+android:orientation="vertical"
+android:padding="8dp">
+
+<TextView
+android:id="@+id/textPreviewSub"
+android:layout_width="wrap_content"
+android:layout_height="wrap_content"
+android:text="预览"
+android:textColor="#00E676"
+android:textSize="12sp"
+android:textStyle="bold" />
+
+<ImageView
+android:id="@+id/imagePreview"
+android:layout_width="match_parent"
+android:layout_height="250dp"
+android:layout_marginTop="4dp"
+android:adjustViewBounds="true"
+android:scaleType="fitCenter"
+tools:src="@drawable/ic_launcher_background" />
+
+</LinearLayout>
+</com.google.android.material.card.MaterialCardView>
+
+        <!-- 可滚动的图像工作台控制区 -->
+<androidx.core.widget.NestedScrollView
+android:layout_width="match_parent"
+android:layout_height="0dp"
+android:layout_weight="1"
+android:fillViewport="true">
+
+<LinearLayout
+android:layout_width="match_parent"
+android:layout_height="wrap_content"
+android:orientation="vertical"
+android:paddingHorizontal="12dp"
+android:paddingBottom="72dp">
+
+                <!-- 卡片 1：图像编辑与抖动选项（已选择本地图片） -->
+<com.google.android.material.card.MaterialCardView
+android:layout_width="match_parent"
+android:layout_height="wrap_content"
+android:layout_marginBottom="10dp"
+app:cardCornerRadius="16dp"
+app:cardElevation="0dp"
+app:strokeColor="?attr/colorOutlineVariant"
+app:strokeWidth="1dp">
+
+<LinearLayout
+android:layout_width="match_parent"
+android:layout_height="wrap_content"
+android:orientation="vertical"
+android:padding="12dp">
+
+                        <!-- 图片操作栏 -->
+<LinearLayout
+android:layout_width="match_parent"
+android:layout_height="wrap_content"
+android:gravity="center_vertical"
+android:orientation="horizontal">
+
+<com.google.android.material.button.MaterialButton
+android:id="@+id/btnPickGallery"
+style="@style/Widget.Material3.Button"
+android:layout_width="0dp"
+android:layout_height="wrap_content"
+android:layout_marginEnd="8dp"
+android:layout_weight="1"
+android:text="选择本地相册图片" />
+
+<com.google.android.material.button.MaterialButton
+android:id="@+id/btnManualCrop"
+style="@style/Widget.Material3.Button.TonalButton"
+android:layout_width="wrap_content"
+android:layout_height="wrap_content"
+android:text="手动裁切" />
+
+</LinearLayout>
+
+<LinearLayout
+android:layout_width="match_parent"
+android:layout_height="wrap_content"
+android:layout_marginTop="6dp"
+android:gravity="center_vertical"
+android:orientation="horizontal">
+
+<com.google.android.material.button.MaterialButton
+android:id="@+id/btnRotateLeft"
+style="@style/Widget.Material3.Button.OutlinedButton"
+android:layout_width="0dp"
+android:layout_height="wrap_content"
+android:layout_marginEnd="6dp"
+android:layout_weight="1"
+android:text="左旋 90°" />
+
+<com.google.android.material.button.MaterialButton
+android:id="@+id/btnRotateRight"
+style="@style/Widget.Material3.Button.OutlinedButton"
+android:layout_width="0dp"
+android:layout_height="wrap_content"
+android:layout_marginEnd="6dp"
+android:layout_weight="1"
+android:text="右旋 90°" />
+
+<com.google.android.material.button.MaterialButton
+android:id="@+id/btnResetEdit"
+style="@style/Widget.Material3.Button.TextButton"
+android:layout_width="wrap_content"
+android:layout_height="wrap_content"
+android:text="重置编辑" />
+
+</LinearLayout>
+
+                        <!-- 屏幕方向单选按钮 -->
+<TextView
+android:layout_width="wrap_content"
+android:layout_height="wrap_content"
+android:layout_marginTop="8dp"
+android:text="屏幕方向"
+android:textColor="?attr/colorOnSurface"
+android:textSize="13sp"
+android:textStyle="bold" />
+
+<RadioGroup
+android:id="@+id/radioGroupOrientation"
+android:layout_width="match_parent"
+android:layout_height="wrap_content"
+android:orientation="horizontal">
+
+<RadioButton
+android:id="@+id/radioOrientPortrait"
+android:layout_width="0dp"
+android:layout_height="wrap_content"
+android:layout_weight="1"
+android:checked="true"
+android:text="竖屏" />
+
+<RadioButton
+android:id="@+id/radioOrientLandscape"
+android:layout_width="0dp"
+android:layout_height="wrap_content"
+android:layout_weight="1"
+android:text="横屏" />
+</RadioGroup>
+
+                        <!-- 选项组：传输编码格式 -->
+<TextView
+android:layout_width="wrap_content"
+android:layout_height="wrap_content"
+android:layout_marginTop="8dp"
+android:text="传输编码格式"
+android:textColor="?attr/colorOnSurface"
+android:textSize="13sp"
+android:textStyle="bold" />
+
+<RadioGroup
+android:id="@+id/radioGroupFormat"
+android:layout_width="match_parent"
+android:layout_height="wrap_content"
+android:orientation="horizontal">
+
+<RadioButton
+android:id="@+id/radioFormat2bpp"
+android:layout_width="0dp"
+android:layout_height="wrap_content"
+android:layout_weight="1"
+android:checked="true"
+android:text="4色 (高画质)" />
+
+<RadioButton
+android:id="@+id/radioFormat1bpp"
+android:layout_width="0dp"
+android:layout_height="wrap_content"
+android:layout_weight="1"
+android:text="黑白 (极速)" />
+</RadioGroup>
+
+<TextView
+android:layout_width="wrap_content"
+android:layout_height="wrap_content"
+android:layout_marginTop="8dp"
+android:text="图像缩放模式"
+android:textColor="?attr/colorOnSurface"
+android:textSize="13sp"
+android:textStyle="bold" />
+
+<RadioGroup
+android:id="@+id/radioGroupScale"
+android:layout_width="match_parent"
+android:layout_height="wrap_content"
+android:orientation="horizontal">
+
+<RadioButton
+android:id="@+id/radioScaleCrop"
+android:layout_width="0dp"
+android:layout_height="wrap_content"
+android:layout_weight="1"
+android:checked="true"
+android:text="等比裁剪" />
+
+<RadioButton
+android:id="@+id/radioScaleFit"
+android:layout_width="0dp"
+android:layout_height="wrap_content"
+android:layout_weight="1"
+android:text="等比留白" />
+
+<RadioButton
+android:id="@+id/radioScaleStretch"
+android:layout_width="0dp"
+android:layout_height="wrap_content"
+android:layout_weight="1"
+android:text="拉伸铺满" />
+</RadioGroup>
+
+                        <!-- 抖动算法垂直滚轮选择器 -->
+<TextView
+android:layout_width="wrap_content"
+android:layout_height="wrap_content"
+android:layout_marginTop="8dp"
+android:text="抖动算法 (上下滑动滚轮切换)"
+android:textColor="?attr/colorOnSurface"
+android:textSize="13sp"
+android:textStyle="bold" />
+
+<NumberPicker
+android:id="@+id/pickerDitherMode"
+android:layout_width="match_parent"
+android:layout_height="120dp"
+android:layout_marginTop="4dp" />
+
+                        <!-- 抖动算法详细说明 -->
+<TextView
+android:id="@+id/textDitherDescription"
+android:layout_width="match_parent"
+android:layout_height="wrap_content"
+android:layout_marginTop="6dp"
+android:background="?attr/colorSurfaceContainerHigh"
+android:padding="8dp"
+android:text="适合常规照片与人像。色彩过渡自然，是通用性最强的经典效果。"
+android:textColor="?attr/colorOnSurfaceVariant"
+android:textSize="12sp" />
+
+</LinearLayout>
+</com.google.android.material.card.MaterialCardView>
+
+                <!-- 卡片 2：图像色彩调整 -->
+<com.google.android.material.card.MaterialCardView
+android:layout_width="match_parent"
+android:layout_height="wrap_content"
+android:layout_marginBottom="10dp"
+app:cardCornerRadius="16dp"
+app:cardElevation="0dp"
+app:strokeColor="?attr/colorOutlineVariant"
+app:strokeWidth="1dp">
+
+<LinearLayout
+android:layout_width="match_parent"
+android:layout_height="wrap_content"
+android:orientation="vertical"
+android:padding="12dp">
+
+<LinearLayout
+android:layout_width="match_parent"
+android:layout_height="wrap_content"
+android:gravity="center_vertical"
+android:orientation="horizontal">
+
+<TextView
+android:layout_width="0dp"
+android:layout_height="wrap_content"
+android:layout_weight="1"
+android:text="图像色彩"
+android:textColor="?attr/colorOnSurface"
+android:textSize="14sp"
+android:textStyle="bold" />
+
+<com.google.android.material.button.MaterialButton
+android:id="@+id/btnResetAdjustments"
+style="@style/Widget.Material3.Button.TextButton"
+android:layout_width="wrap_content"
+android:layout_height="wrap_content"
+android:padding="0dp"
+android:text="重置"
+android:textSize="12sp" />
+
+</LinearLayout>
+
+                        <!-- 饱和度滑块 -->
+<TextView
+android:id="@+id/textSaturationLabel"
+android:layout_width="match_parent"
+android:layout_height="wrap_content"
+android:layout_marginTop="2dp"
+android:text="饱和度: 1.00x"
+android:textColor="?attr/colorOnSurfaceVariant"
+android:textSize="12sp" />
+
+<com.google.android.material.slider.Slider
+android:id="@+id/sliderSaturation"
+android:layout_width="match_parent"
+android:layout_height="wrap_content"
+android:stepSize="0.05"
+android:value="1.0"
+android:valueFrom="0.0"
+android:valueTo="2.5" />
+
+                        <!-- 对比度滑块 -->
+<TextView
+android:id="@+id/textContrastLabel"
+android:layout_width="match_parent"
+android:layout_height="wrap_content"
+android:layout_marginTop="2dp"
+android:text="对比度: 1.00x"
+android:textColor="?attr/colorOnSurfaceVariant"
+android:textSize="12sp" />
+
+<com.google.android.material.slider.Slider
+android:id="@+id/sliderContrast"
+android:layout_width="match_parent"
+android:layout_height="wrap_content"
+android:stepSize="0.05"
+android:value="1.0"
+android:valueFrom="0.5"
+android:valueTo="2.0" />
+
+                        <!-- 亮度滑块 -->
+<TextView
+android:id="@+id/textBrightnessLabel"
+android:layout_width="match_parent"
+android:layout_height="wrap_content"
+android:layout_marginTop="2dp"
+android:text="亮度: 0"
+android:textColor="?attr/colorOnSurfaceVariant"
+android:textSize="12sp" />
+
+<com.google.android.material.slider.Slider
+android:id="@+id/sliderBrightness"
+android:layout_width="match_parent"
+android:layout_height="wrap_content"
+android:stepSize="1.0"
+android:value="0.0"
+android:valueFrom="-100.0"
+android:valueTo="100.0" />
+
+                        <!-- Gamma 校正滑块 -->
+<TextView
+android:id="@+id/textGammaLabel"
+android:layout_width="match_parent"
+android:layout_height="wrap_content"
+android:layout_marginTop="2dp"
+android:text="伽马: 1.00"
+android:textColor="?attr/colorOnSurfaceVariant"
+android:textSize="12sp" />
+
+<com.google.android.material.slider.Slider
+android:id="@+id/sliderGamma"
+android:layout_width="match_parent"
+android:layout_height="wrap_content"
+android:stepSize="0.05"
+android:value="1.0"
+android:valueFrom="0.2"
+android:valueTo="3.0" />
+
+                        <!-- 锐化滑块 -->
+<TextView
+android:id="@+id/textSharpenLabel"
+android:layout_width="match_parent"
+android:layout_height="wrap_content"
+android:layout_marginTop="2dp"
+android:text="锐化: 0%"
+android:textColor="?attr/colorOnSurfaceVariant"
+android:textSize="12sp" />
+
+<com.google.android.material.slider.Slider
+android:id="@+id/sliderSharpen"
+android:layout_width="match_parent"
+android:layout_height="wrap_content"
+android:stepSize="1.0"
+android:value="0.0"
+android:valueFrom="0.0"
+android:valueTo="100.0" />
+
+                        <!-- 反色复选框 -->
+<com.google.android.material.checkbox.MaterialCheckBox
+android:id="@+id/checkInvertColors"
+android:layout_width="match_parent"
+android:layout_height="wrap_content"
+android:text="反色 / 负片效果" />
+
+</LinearLayout>
+</com.google.android.material.card.MaterialCardView>
+
+</LinearLayout>
+</androidx.core.widget.NestedScrollView>
+
+</LinearLayout>
+
+    <!-- 悬浮的紧凑发送按钮（无外边框，2 个汉字的常规宽度） -->
+<LinearLayout
+android:layout_width="wrap_content"
+android:layout_height="wrap_content"
+android:layout_gravity="bottom|center_horizontal"
+android:layout_marginBottom="16dp"
+android:gravity="center"
+android:orientation="vertical">
+
+<com.google.android.material.progressindicator.LinearProgressIndicator
+android:id="@+id/progressTransfer"
+android:layout_width="120dp"
+android:layout_height="wrap_content"
+android:layout_marginBottom="6dp"
+android:indeterminate="false"
+android:visibility="gone"
+app:trackCornerRadius="3dp"
+app:trackThickness="4dp" />
+
+<com.google.android.material.button.MaterialButton
+android:id="@+id/btnSendImage"
+style="@style/Widget.Material3.Button"
+android:layout_width="wrap_content"
+android:layout_height="48dp"
+android:elevation="6dp"
+android:paddingHorizontal="32dp"
+android:text="发送"
+android:textSize="16sp"
+android:textStyle="bold"
+app:cornerRadius="24dp" />
+
+</LinearLayout>
 
 </FrameLayout>

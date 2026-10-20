@@ -4,43 +4,37 @@
 #include <stdint.h>
 
 // ============================================================================
-//  The one screen this firmware has to draw by itself.
+//  本固件唯一需要自己绘制的屏幕。
 //
-//  Everything else on the panel comes from the phone as a finished image. This
-//  screen is the fallback: when nobody has connected over Bluetooth, the panel
-//  has to tell the user how to reach the device.
+//  面板上的其他内容都以成品图像的形式来自手机。这一屏是兜底：当没有人通过
+//  蓝牙连接时，面板必须告诉用户如何找到这台设备。
 //
-//  Layout (portrait canvas, see ble_geometry.h - the device rotates it onto the
-//  landscape panel itself):
+//  版式（竖屏画布，见 ble_geometry.h - 设备自己把它旋转到横屏面板上）：
 //
 //      +----------------------------------------+
-//      | [] [] [] [] [] [] [] [] [] [] [] [] [] |  <- 4-colour ring, cycling
-//      | []                                    [] |     black/white/red/yellow
+//      | [] [] [] [] [] [] [] [] [] [] [] [] [] |  <- 4 色环，循环
+//      | []                                    [] |     黑/白/红/黄
 //      | []       请使用蓝牙连接：              [] |
-//      | []      8adge-XXXXX                    [] |  <- all text black
+//      | []      8adge-XXXXX                    [] |  <- 所有文字为黑色
 //      | []      打开手机App搜索并连接          [] |
 //      | []                                    [] |
 //      | [] [] [] [] [] [] [] [] [] [] [] [] [] |
 //      +----------------------------------------+
 //
-//  It is the only 2bpp *colour* UI in the firmware - the ring is the one place
-//  the panel's red and yellow pixels are exercised, so it doubles as a colour
-//  self-test. Chinese comes from the generated subset font in ble_font.h (see
-//  tools/gen_ble_font.py); the 5x7 ASCII font the older firmware used cannot
-//  render it at all.
+//  它是固件里唯一的 2bpp *彩色* UI - 这个环是面板红、黄像素被用到的唯一
+//  场合，所以它同时充当彩色自测。中文来自 ble_font.h 中生成的子集字库
+//  （见 tools/gen_ble_font.py）；旧固件用的 5x7 ASCII 字库根本无法渲染它。
 // ============================================================================
 
-// Paint the "connect over Bluetooth" screen into `buf` and push it to the panel.
+// 把「请通过蓝牙连接」这一屏绘制进 `buf` 并推送到面板。
 //
-// `buf` is the caller's framebuffer (EPD398_COLOR_BYTES bytes, panel-native
-// layout). It is passed in rather than allocated here because the firmware owns
-// exactly one 105984-byte buffer for its whole lifetime: a second one would not
-// fit next to the BLE stack, and freeing/reallocating around every paint only
-// invites fragmentation.
+// `buf` 是调用方的帧缓冲（EPD398_COLOR_BYTES 字节，面板原生布局）。它以参数
+// 传入而不是在这里分配，是因为固件在其整个生命周期里只持有一个 105984 字节的
+// 缓冲区：第二个放不进 BLE 协议栈旁边，而每次绘制前后反复释放/重新分配只会招来
+// 内存碎片。
 //
-// Blocks for 15-25 s while the panel refreshes, so call it from the main loop
-// (or from setup()), never from a BLE callback. Returns false if `buf` is null
-// or the panel did not answer.
+// 面板刷屏期间会阻塞 15-25 s，所以请从主循环（或 setup()）调用，绝不要从 BLE
+// 回调里调用。`buf` 为空或面板没有应答时返回 false。
 bool bleScreenShowHint(uint8_t *buf, const char *deviceName);
 
 #endif // BADGE8_BLE_SCREEN_H

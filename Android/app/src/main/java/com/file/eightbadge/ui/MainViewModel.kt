@@ -34,7 +34,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     val bleManager = BleManager(application)
 
-    // Ble State delegate
+    // 蓝牙状态委托
     val scannedDevices: StateFlow<List<BleDeviceItem>> = bleManager.scannedDevices
     val isScanning: StateFlow<Boolean> = bleManager.isScanning
     val connectionState: StateFlow<DeviceState> = bleManager.connectionState
@@ -43,10 +43,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val transferProgress: StateFlow<TransferProgress> = bleManager.transferProgress
     val refreshBlockedEvent: SharedFlow<RefreshBlockedEvent> = bleManager.refreshBlockedFlow
 
-    // Logs
+    // 日志
     val logs: StateFlow<List<LogMessage>> = bleManager.logsFlow
 
-    // Image Studio State
+    // 图像工作台状态
     private val _sourceBitmap = MutableStateFlow<Bitmap?>(null)
     val sourceBitmap: StateFlow<Bitmap?> = _sourceBitmap.asStateFlow()
 
@@ -56,15 +56,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _isProcessing = MutableStateFlow(false)
     val isProcessing: StateFlow<Boolean> = _isProcessing.asStateFlow()
 
-    // Processing Options
-    val screenOrientation = MutableStateFlow(ScreenOrientation.PORTRAIT) // Default Portrait (552x768)
+    // 处理选项
+    val screenOrientation = MutableStateFlow(ScreenOrientation.PORTRAIT) // 默认竖屏 (552x768)
     val imageFormat = MutableStateFlow(ImageFormat.BPP2)
     val scaleMode = MutableStateFlow(ScaleMode.CROP_FILL)
     val ditherMode = MutableStateFlow(DitherMode.FLOYD_STEINBERG)
     val rotationDegrees = MutableStateFlow(0f)
     val cropRect = MutableStateFlow<RectF?>(null)
 
-    // Color & Detail Adjustments
+    // 色彩与细节调整
     val brightness = MutableStateFlow(0f)
     val contrast = MutableStateFlow(1.0f)
     val saturation = MutableStateFlow(1.0f)
@@ -73,7 +73,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val invertColors = MutableStateFlow(false)
 
     init {
-        // Load default test pattern on startup
+        // 启动时加载默认测试图案
         loadTestPattern("YELLOW_RED_TEST")
     }
 
@@ -115,6 +115,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     }
                     BleProtocol.OP_SHOW_HINT -> sendShowHint()
                 }
+            } else {
+                // 授权令牌已失效（设备拦截后超过 120 秒才确认）。重新发一次
+                // 原命令，设备会再拦一次并给出新令牌。
+                _toastMessageFlow.emit("授权已失效，请重新点击【发送】")
             }
         }
     }
@@ -124,7 +128,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         rotationDegrees.value = 0f
         cropRect.value = null
 
-        // Auto detect orientation based on image aspect ratio
+        // 根据图片宽高比自动检测屏幕方向
         if (bitmap.width > bitmap.height) {
             screenOrientation.value = ScreenOrientation.LANDSCAPE
         } else {
@@ -143,7 +147,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun loadAndSendTestPattern(patternType: String) {
-        // Reset color adjustments to defaults
+        // 将色彩调整重置为默认值
         brightness.value = 0f
         contrast.value = 1.0f
         saturation.value = 1.0f
@@ -153,7 +157,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         rotationDegrees.value = 0f
         cropRect.value = null
 
-        // Set DitherMode to NEAREST ("纯色无抖动") for pure solid color test patterns
+        // 对纯色测试图案将 DitherMode 设为 NEAREST（"纯色无抖动"）
         ditherMode.value = DitherMode.NEAREST
 
         val testBitmap = ImageProcessor.generateTestPattern(patternType, screenOrientation.value)
@@ -185,7 +189,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 lastPendingFormat = result.format
                 lastPendingCrc32 = result.crc32
 
-                // Immediately send test pattern to e-paper
+                // 立即将测试图案发送到墨水屏
                 bleManager.sendImage(result.rawPayload, result.format, result.crc32)
             }
         }

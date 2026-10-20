@@ -4,119 +4,113 @@
 #include <Arduino.h>
 
 // ============================================================================
-//  3.98" 4-color e-paper driver - A1 panel (black / white / red / yellow)
+//  3.98 英寸 4 色墨水屏驱动 - A1 面板（黑 / 白 / 红 / 黄）
 //
-//  Panel:      768 x 552 pixels, 2 bits per pixel (4 colors)
-//  Controller: JD79668 family, driven with the JD79665 register set
-//  Bus:        4-wire bit-banged SPI (MSB first, clock idles LOW)
-//  Revision:   A1 production revision only
+//  面板：      768 x 552 像素，每像素 2 bit（4 色）
+//  控制器：    JD79668 系列，用 JD79665 寄存器组驱动
+//  总线：      4 线软件模拟（bit-banged）SPI（MSB 在前，时钟空闲为低）
+//  版本：      仅支持 A1 量产版本
 //
-//  Single-path final version. The reasoning below is kept because two of the
-//  obvious "improvements" here make the picture worse, and both are easy to
-//  reinvent from the open-source driver this register sequence came from.
+//  单路径最终版。下面这些推理保留下来，是因为这里两处看起来很明显的
+//  「改进」都会让画面更差，而且这两处都很容易从这个寄存器序列所源自的
+//  开源驱动里被重新发明出来。
 //
-//  ---------------------------------------------------------------- addressing
+//  ---------------------------------------------------------------- 寻址
 //
-//  The controller's gate address space is 600 lines, but the panel has only 552
-//  pixel rows, and its gate lines are wired in two interleaved groups:
+//  控制器的栅极地址空间是 600 线，但面板只有 552 个像素行，而且它的栅极线
+//  按两组交错接线：
 //
-//      image rows   0..299  ->  gate addresses 0, 2, 4, ..., 598   (300 rows)
-//      image rows 300..551  ->  gate addresses 1, 3, 5, ..., 503   (252 rows)
+//      图像第   0..299 行  ->  栅极地址 0, 2, 4, ..., 598   （300 行）
+//      图像第 300..551 行  ->  栅极地址 1, 3, 5, ..., 503   （252 行）
 //
-//  So image row r sits at gate 2*r for r <= 299, and at 2*r - 599 above that,
-//  and 0x61 has to be told VRES = 600 rather than 552.
+//  因此当 r <= 299 时图像第 r 行位于栅极 2*r，超过之后位于 2*r - 599，
+//  并且必须把 0x61 的 VRES 设为 600，而不是 552。
 //
-//  With VRES = 552 the controller only drives gates 0..551, so image rows
-//  276..299 (gate addresses 552..598) are never driven at all: the picture comes
-//  out cut in half at the middle, the lower half pushed down, and the gap keeps
-//  showing the previous frame. That is the failure the open-source driver has on
-//  this panel, and it is why its own VRES = 552 cannot be copied here.
+//  当 VRES = 552 时，控制器只驱动栅极 0..551，因此图像第 276..299 行
+//  （栅极地址 552..598）根本不会被驱动：画面从中间被切成两半，下半部分被
+//  往下推，而那处空档一直显示上一帧。这正是开源驱动在这块面板上的故障，
+//  也是它自己的 VRES = 552 不能照搬到这里的原因。
 //
-//  The 48 remaining gates (odd 505..599) have no pixel row. The controller
-//  drives the two interleaved groups in pairs, so gates 504..598 each end up
-//  paired with a dangling partner and the last 96 gates of the scan are
-//  half-loaded. That is what used to leave image rows 252..299 (45.7%-54.3% down
-//  the screen) visibly darker than the rest - most obvious on large flat areas
-//  of a single colour, where the whole band shifts to a deeper tone.
+//  余下的 48 根栅极（奇数 505..599）没有对应的像素行。控制器成对地驱动
+//  这两组交错的栅极，所以 504..598 这些栅极各自与一个悬空的伙伴配对，
+//  扫描的最后 96 根栅极只被加载了一半。这就是过去让图像第 252..299 行
+//  （屏幕自上而下 45.7%-54.3% 处）明显比其余部分更暗的原因 - 在单一颜色的
+//  大片平坦区域上最明显，那里整条带会偏到更深的色调。
 //
-//  ---------------------------------------------------------------- sequence
+//  ---------------------------------------------------------------- 寄存器序列
 //
-//  The register sequence is the JD79665 one from the open-source Huawei A1
-//  adaptation (github.com/krstc/InkSight_adapt_HUAWEI_eink, MIT). It is what
-//  removes that band: the vendor firmware's own sequence sets 0x00 <- 0x0B,
-//  "LUT from OTP", which leaves the panel on an internal waveform that reacts to
-//  the half-loaded gate pairs.
+//  寄存器序列是开源华为 A1 适配版
+//  （github.com/krstc/InkSight_adapt_HUAWEI_eink, MIT）里的 JD79665 那一套。
+//  正是它消除了那条暗带：厂商固件自己的序列把 0x00 设为 <- 0x0B，
+//  「LUT from OTP」，这会让面板停留在一种会对只加载了一半的栅极对起反应的
+//  内部波形上。
 //
-//  The register set and the addressing are coupled, so neither can be swapped on
-//  its own: the vendor registers go with the interleaved addressing, and the
-//  open-source registers were written for linear addressing. Measured on this
-//  panel, every alternative to this file is wrong:
+//  寄存器组和寻址方式是耦合的，所以两者都不能单独替换：厂商寄存器配的是
+//  交错寻址，而开源寄存器是为线性寻址写的。在本面板上实测，除本文件之外的
+//  每一种组合都是错的：
 //
-//      vendor registers      + VRES 600 + 552 single-row windows
-//          -> correct image, but the darker band at 45.7%-54.3% is present
-//      open-source registers + VRES 600 + 552 single-row windows
-//          -> image stretched about 2x vertically, lower part off the panel
-//      open-source registers + VRES 552 + linear burst
-//          -> 24-row dead band at 50.0%-54.3% (image rows 276..299)
-//      open-source registers + VRES 600 + single burst           <- THIS FILE
-//          -> correct image, no darker band
+//      厂商寄存器       + VRES 600 + 552 个单行窗口
+//          -> 画面正确，但 45.7%-54.3% 处的暗带存在
+//      开源寄存器 + VRES 600 + 552 个单行窗口
+//          -> 画面在垂直方向被拉伸约 2 倍，下半部分跑出面板之外
+//      开源寄存器 + VRES 552 + 线性 burst
+//          -> 50.0%-54.3%（图像第 276..299 行）处出现 24 行死带
+//      开源寄存器 + VRES 600 + 单次 burst           <- 本文件
+//          -> 画面正确，没有暗带
 //
-//  A single 0x10 burst through the full window still walks the gate space in the
-//  interleaved order, so the framebuffer order (image rows 0..551) lands on the
-//  right gates without the driver having to issue 552 single-row 0x83 windows.
+//  一次贯穿全窗口的 0x10 burst 依然会按交错顺序走过栅极空间，因此帧缓冲的
+//  顺序（图像第 0..551 行）会落到正确的栅极上，驱动不必再去发 552 个单行的
+//  0x83 窗口。
 //
-//  ---------------------------------------------------------------- refresh
+//  ---------------------------------------------------------------- 刷屏
 //
-//  BUSY can go HIGH before the waveform has finished, so a release in under
-//  EPD398_BUSY_EARLY_MS is treated as "not finished" and followed by a fixed
-//  EPD398_REFRESH_FALLBACK_MS wait before power-off.
+//  BUSY 可能在波形结束之前就变为高电平，所以少于 EPD398_BUSY_EARLY_MS 的
+//  释放会被当成「尚未结束」，并在断电前补上一段固定的 EPD398_REFRESH_FALLBACK_MS
+//  等待。
 //
-//  That fallback wait must exceed the longest real refresh (15-25 s). A fixed
-//  wait that is shorter powers the panel off while the last rows are still being
-//  written, and those rows come out over-driven. The open-source driver uses
-//  14000 ms here, which sits inside that range and is therefore unsafe; 25000 ms
-//  is used instead. 0x12 takes 0x00, as in the open-source driver.
+//  这段兜底等待必须超过最长的真实刷屏时间（15-25 s）。更短的固定等待会在
+//  最后几行还在写入时就给面板断电，那些行会因此过驱。开源驱动这里用的是
+//  14000 ms，落在该区间内，因此不安全；这里改用 25000 ms。0x12 取值为 0x00，
+//  与开源驱动一致。
 //
-//  ---------------------------------------------------------------- commands
+//  ---------------------------------------------------------------- 命令
 //
-//      0x00 panel setting        0x04 power ON          0x12 display refresh
-//      0x02 power OFF            0x07 deep sleep        0x61 resolution
-//      0x10 data start xmit      0x83 partial window
+//      0x00 面板设置        0x04 电源开          0x12 显示刷屏
+//      0x02 电源关          0x07 深度睡眠        0x61 分辨率
+//      0x10 开始传输数据      0x83 局部窗口
 //
-//  This file is self-contained: if the host project already defines the
-//  PIN_EPD_* macros (e.g. 8adge's config.h) those are used, otherwise the
-//  defaults below (the vendor's wiring) apply.
+//  本文件是自包含的：如果宿主工程已经定义了 PIN_EPD_* 宏（例如 8adge 的
+//  config.h），就用那些定义，否则套用下面的默认值（厂商接线）。
 // ============================================================================
 
-// ---------------------------------------------------------------- geometry
+// ---------------------------------------------------------------- 几何
 #define EPD398_WIDTH        768
 #define EPD398_HEIGHT       552
-// 2 bits per pixel, the panel's native packing: 4 pixels per byte, most
-// significant pair leftmost. Reported to the app in GET_INFO.
+// 每像素 2 bit，面板的原生打包方式：每字节 4 个像素，最高位那对在最左边。
+// 在 GET_INFO 里上报给 App。
 #define EPD398_BPP          2
-#define EPD398_ROW_BYTES    (EPD398_WIDTH / 4)                  // 192 bytes/row @ 2bpp
-#define EPD398_COLOR_BYTES  (EPD398_WIDTH * EPD398_HEIGHT / 4)  // 105984 bytes
+#define EPD398_ROW_BYTES    (EPD398_WIDTH / 4)                  // 192 字节/行 @ 2bpp
+#define EPD398_COLOR_BYTES  (EPD398_WIDTH * EPD398_HEIGHT / 4)  // 105984 字节
 
-// Controller gate address space. 600, NOT EPD398_HEIGHT - see the addressing
-// note above. A 552-line space cannot reach the gate addresses of image rows
-// 276..299, which is a visible defect rather than a rounding difference.
+// 控制器栅极地址空间。是 600，而不是 EPD398_HEIGHT - 见上面的寻址说明。
+// 552 线的空间无法到达图像第 276..299 行的栅极地址，那是可见的缺陷，而不是
+// 舍入误差。
 #define EPD398_VRES         600
 
-// Both bounds are compile-time, because the failure they prevent is silent:
-// with VRES = 552 the controller simply never drives the gates carrying image
-// rows 276..299 (half the picture shifted down and a 24-row band left showing
-// the previous frame), and a VRES larger than the controller's own 600-line
-// space would just spend scan time addressing gates that do not exist.
-//      image rows   0..299 -> gates 0, 2, 4, ..., 598   (highest: 598)
-//      image rows 300..551 -> gates 1, 3, 5, ..., 503
+// 两个边界都是编译期的，因为它们防范的故障是静默的：当 VRES = 552 时，
+// 控制器根本不驱动承载图像第 276..299 行的栅极（一半画面被下移，并且留下
+// 24 行显示上一帧），而比控制器自身的 600 线空间更大的 VRES 只会把扫描时间
+// 浪费在寻址根本不存在的栅极上。
+//      图像第   0..299 行 -> 栅极 0, 2, 4, ..., 598   （最高：598）
+//      图像第 300..551 行 -> 栅极 1, 3, 5, ..., 503
 static_assert(EPD398_VRES >= 599,
               "EPD398_VRES must reach gate 598 (image row 299); 552 leaves "
               "image rows 276..299 undriven");
 static_assert(EPD398_VRES <= 600,
               "EPD398_VRES exceeds the controller's 600-line gate space");
 
-// ---------------------------------------------------------------- pins
-// Vendor wiring (screen side -> ESP32-C3 side):
+// ---------------------------------------------------------------- 引脚
+// 厂商接线（屏侧 -> ESP32-C3 侧）：
 //   DIN -> 6   SCK -> 4   DC -> 1   CS -> 7   RST -> 2   BUSY -> 10
 #ifndef PIN_EPD_MOSI
 #define PIN_EPD_MOSI 6
@@ -137,113 +131,106 @@ static_assert(EPD398_VRES <= 600,
 #define PIN_EPD_BUSY 10
 #endif
 
-// ---------------------------------------------------------------- timings
-// BUSY polling timeout for the power-on / power-off handshakes (the vendor
-// firmware uses 45000 ms).
+// ---------------------------------------------------------------- 时序
+// 电源开 / 电源关握手的 BUSY 轮询超时（厂商固件用的是 45000 ms）。
 #ifndef EPD398_BUSY_TIMEOUT_MS
 #define EPD398_BUSY_TIMEOUT_MS 45000UL
 #endif
 
-// BUSY timeout for the display refresh itself. A 4-colour full refresh on this
-// panel typically takes 15-25 s. The open-source driver allows 180 s, but that
-// is three minutes of blocked main loop when the panel never answers, so 60 s is
-// used here (still ~2.5x the expected refresh time).
+// 显示刷屏本身的 BUSY 超时。这块面板上一次 4 色整屏刷新通常要 15-25 s。
+// 开源驱动允许 180 s，但那是面板一直不回应时主循环被阻塞三分钟，所以这里
+// 用 60 s（仍然约为预期刷屏时间的 2.5 倍）。
 #ifndef EPD398_REFRESH_TIMEOUT_MS
 #define EPD398_REFRESH_TIMEOUT_MS 60000UL
 #endif
 
-// How long to wait for BUSY to release after a hardware reset. The panel
-// normally answers within a few hundred ms, so 10 s is ample and keeps a dead
-// panel from stalling boot.
+// 硬件复位后等待 BUSY 释放的时间。面板通常几百毫秒内就会应答，所以 10 s
+// 很充裕，而且不会让一块坏掉的面板拖延启动。
 #ifndef EPD398_RESET_WAIT_MS
 #define EPD398_RESET_WAIT_MS 10000UL
 #endif
 
-// A BUSY release faster than this means "the waveform is not finished", so the
-// driver waits EPD398_REFRESH_FALLBACK_MS instead of powering off. 0 disables
-// the check.
+// BUSY 释放得比这个还快，就意味着「波形尚未结束」，于是驱动改为等待
+// EPD398_REFRESH_FALLBACK_MS，而不是断电。设为 0 则关闭该检查。
 #ifndef EPD398_BUSY_EARLY_MS
 #define EPD398_BUSY_EARLY_MS 250UL
 #endif
 
-// The wait substituted when BUSY released early. MUST exceed the longest real
-// refresh (15-25 s) or it powers the panel off mid-waveform and the last rows
-// come out over-driven. The open-source driver's 14000 ms is too short.
+// BUSY 提前释放时用来替代的等待时间。必须超过最长的真实刷屏时间（15-25 s），
+// 否则它会在波形中途给面板断电，最后几行会过驱。开源驱动的 14000 ms 太短。
 #ifndef EPD398_REFRESH_FALLBACK_MS
 #define EPD398_REFRESH_FALLBACK_MS 25000UL
 #endif
 
-// Settle time added after a normal-looking refresh before powering off.
+// 一次看起来正常的刷屏之后、断电之前额外加的稳定时间。
 #ifndef EPD398_REFRESH_SETTLE_MS
 #define EPD398_REFRESH_SETTLE_MS 500UL
 #endif
 
-// Data byte for the 0x12 display-refresh command. 0x00 belongs with the
-// open-source register sequence; the vendor sequence uses 0x01. Measured: this
-// byte does not affect the darker band, but it does belong with the sequence.
+// 0x12 显示刷屏命令的数据字节。0x00 属于开源寄存器序列；厂商序列用的是
+// 0x01。实测：这个字节不影响那条暗带，但它确实属于该序列。
 #ifndef EPD398_REFRESH_MODE
 #define EPD398_REFRESH_MODE 0x00
 #endif
 
-// Set to 0 to silence the driver's serial logging.
+// 设为 0 可关闭驱动的串口日志。
 #ifndef EPD398_DEBUG
 #define EPD398_DEBUG 1
 #endif
 
-// ---------------------------------------------------------------- colors
-// 2bpp color codes. Codes 0x00/0x01 follow the open-source
-// packMonoPixelGroup() convention; 0x02 is documented as yellow by the comment
-// `if (color == 0x02) color = 0x01; // map yellow to red` in epd_driver.cpp.
-// Verify with epd398TestPattern() on your panel.
+// ---------------------------------------------------------------- 颜色
+// 2bpp 颜色码。0x00/0x01 遵循开源版
+// packMonoPixelGroup() 的约定；0x02 在 epd_driver.cpp 里由注释
+// `if (color == 0x02) color = 0x01; // 把黄色映射为红色` 记录为黄色。
+// 请用 epd398TestPattern() 在自己的面板上核对。
 #define EPD398_BLACK  0x00
 #define EPD398_WHITE  0x01
 #define EPD398_YELLOW 0x02
 #define EPD398_RED    0x03
 
 // ---------------------------------------------------------------- API
-// Low level
+// 低层
 void epd398GpioInit();
 void epd398WaitBusy(unsigned long timeoutMs = EPD398_BUSY_TIMEOUT_MS);
 
-// Same as epd398WaitBusy() but reports whether the panel actually released
-// BUSY. Use this when the caller needs to distinguish a real refresh from a
-// timeout (epd398Display2bpp() does).
+// 与 epd398WaitBusy() 相同，但会报告面板是否真的释放了 BUSY。当调用方需要
+// 区分真实刷屏与超时时用它（epd398Display2bpp() 就是这么做的）。
 bool epd398WaitBusyTimed(unsigned long timeoutMs);
 
 void epd398Init();
 void epd398PowerOff();
 void epd398Sleep();
 
-// Draw a 2bpp framebuffer (EPD398_COLOR_BYTES bytes) and refresh the panel.
-// Full sequence: init -> upload -> 0x12 refresh -> power off.
+// 绘制一个 2bpp 帧缓冲（EPD398_COLOR_BYTES 字节）并刷新面板。
+// 完整流程：init -> 上传 -> 0x12 刷屏 -> 断电。
 void epd398Display2bpp(const uint8_t *colorBuf);
 
-// Same, but without the init/power-off steps, for when you manage them yourself.
+// 相同，但省去 init/断电步骤，供自行管理这些步骤时使用。
 void epd398Upload2bpp(const uint8_t *colorBuf);
 
-// True when the most recent epd398Display2bpp() completed its refresh (BUSY
-// released, or the fallback wait ran). False after a BUSY timeout.
+// 最近一次 epd398Display2bpp() 完成了刷屏（BUSY 释放，或执行了兜底等待）时
+// 为 true。BUSY 超时之后为 false。
 bool epd398LastOperationOk();
 
-// ---------------------------------------------------------------- helpers
-// Allocate the framebuffer (105984 bytes) on the heap. Returns nullptr on
-// failure. Free with epd398FreeBuffer().
+// ---------------------------------------------------------------- 辅助函数
+// 在堆上分配帧缓冲（105984 字节）。失败时返回 nullptr。用
+// epd398FreeBuffer() 释放。
 uint8_t *epd398AllocBuffer();
 
-// Free a buffer obtained from epd398AllocBuffer().
+// 释放由 epd398AllocBuffer() 取得的缓冲区。
 void epd398FreeBuffer(uint8_t *buf);
 
-// Fill the whole framebuffer with one color code.
+// 用同一种颜色码填充整个帧缓冲。
 void epd398Fill(uint8_t *buf, uint8_t color);
 
-// Set one pixel. Coordinates outside the panel are ignored.
+// 设置一个像素。面板之外的坐标会被忽略。
 void epd398SetPixel(uint8_t *buf, int x, int y, uint8_t color);
 
-// Fill a rectangle.
+// 填充一个矩形。
 void epd398FillRect(uint8_t *buf, int x, int y, int w, int h, uint8_t color);
 
-// Fill the framebuffer with vertical color bars (one per color) plus corner
-// markers, to verify the color mapping on your panel.
+// 用垂直色条（每种颜色一条）加四角标记填充帧缓冲，
+// 用来核对自己面板上的颜色映射。
 void epd398TestPattern(uint8_t *buf, const uint8_t *colors, int count);
 
 #endif // EPD_398_4COLOR_H

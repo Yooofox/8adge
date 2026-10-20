@@ -10,7 +10,7 @@ import java.nio.ByteOrder
 import java.util.UUID
 
 object BleProtocol {
-    // UUIDs (Updated for Protocol v3)
+    // UUID（已按协议 v3 更新）
     val SERVICE_UUID: UUID = UUID.fromString("42414447-0001-4e5a-9c1a-6b7c8d9e0f11")
     val CONTROL_CHAR_UUID: UUID = UUID.fromString("42414447-0002-4e5a-9c1a-6b7c8d9e0f11")
     val DATA_CHAR_UUID: UUID = UUID.fromString("42414447-0003-4e5a-9c1a-6b7c8d9e0f11")
@@ -19,7 +19,7 @@ object BleProtocol {
     const val DEVICE_NAME_PREFIX = "8adge-"
     const val PROTOCOL_VERSION = 3
 
-    // Opcodes (Request)
+    // 操作码（请求）
     const val OP_GET_INFO: Byte = 0x01
     const val OP_BEGIN_IMAGE: Byte = 0x02
     const val OP_END_IMAGE: Byte = 0x03
@@ -29,10 +29,10 @@ object BleProtocol {
     const val OP_SET_OPTIONS: Byte = 0x07
     const val OP_BLOCK_CRCS: Byte = 0x08     // v2
     const val OP_RETRY_BLOCK: Byte = 0x09    // v2
-    const val OP_SYNC_TIME: Byte = 0x0A      // v3 UTC time sync
-    const val OP_CONFIRM_REFRESH: Byte = 0x0B // v3 refresh confirmation
+    const val OP_SYNC_TIME: Byte = 0x0A      // v3 UTC 时间同步
+    const val OP_CONFIRM_REFRESH: Byte = 0x0B // v3 刷新放行确认
 
-    // Opcodes (Response)
+    // 操作码（响应）
     const val OP_RESP_GET_INFO: Byte = 0x81.toByte()
     const val OP_RESP_BEGIN_IMAGE: Byte = 0x82.toByte()
     const val OP_RESP_END_IMAGE: Byte = 0x83.toByte()
@@ -45,27 +45,27 @@ object BleProtocol {
     const val OP_RESP_SYNC_TIME: Byte = 0x8A.toByte()
     const val OP_RESP_CONFIRM_REFRESH: Byte = 0x8B.toByte()
 
-    // Opcodes (Events)
+    // 操作码（事件）
     const val EVT_STATE: Byte = 0xC0.toByte()
     const val EVT_PROGRESS: Byte = 0xC1.toByte()
     const val EVT_LOG: Byte = 0xC2.toByte()
-    const val EVT_REFRESH_BLOCKED: Byte = 0xC3.toByte() // v3 cooldown notification
+    const val EVT_REFRESH_BLOCKED: Byte = 0xC3.toByte() // v3 冷却通知
     const val RESP_GENERIC_ERROR: Byte = 0xE0.toByte()
 
-    // Progress Flags
+    // 进度标志
     const val PROGRESS_FLAG_BLOCK_DONE: Byte = 0x01
 
-    // Options
+    // 选项
     const val OPT_DISABLE_HINT: Byte = 0x01
 
     /**
-     * Builds a 4-byte CONTROL request frame header + optional payload.
+     * 构建 4 字节的 CONTROL 请求帧头部 + 可选负载。
      */
     fun buildFrame(opcode: Byte, seq: Byte, payload: ByteArray = ByteArray(0)): ByteArray {
         val frame = ByteArray(4 + payload.size)
         frame[0] = opcode
         frame[1] = seq
-        frame[2] = 0x00 // status = 0 in request
+        frame[2] = 0x00 // 请求中 status = 0
         frame[3] = payload.size.toByte()
         if (payload.isNotEmpty()) {
             System.arraycopy(payload, 0, frame, 4, payload.size)
@@ -74,22 +74,22 @@ object BleProtocol {
     }
 
     /**
-     * Builds BEGIN_IMAGE payload (12 bytes)
-     * Format (1 byte), Flags (1 byte = 0), blockShift (1 byte), reserved (1 byte = 0), totalLen (4 bytes LE), crc32 (4 bytes LE)
+     * 构建 BEGIN_IMAGE 负载（12 字节）
+     * 布局：格式（1 字节）、Flags（1 字节 = 0）、blockShift（1 字节）、保留（1 字节 = 0）、totalLen（4 字节小端）、crc32（4 字节小端）
      */
     fun buildBeginImagePayload(format: ImageFormat, blockShift: Byte, totalLen: Int, crc32: Long): ByteArray {
         val buffer = ByteBuffer.allocate(12).order(ByteOrder.LITTLE_ENDIAN)
         buffer.put(format.code)
         buffer.put(0x00.toByte()) // flags
-        buffer.put(blockShift)    // blockShift (e.g. 12 = 4096B block size)
-        buffer.put(0x00.toByte()) // reserved
+        buffer.put(blockShift)    // blockShift（例如 12 = 4096B 块大小）
+        buffer.put(0x00.toByte()) // 保留
         buffer.putInt(totalLen)
         buffer.putInt(crc32.toInt())
         return buffer.array()
     }
 
     /**
-     * Builds BLOCK_CRCS payload (4 + 4*N bytes)
+     * 构建 BLOCK_CRCS 负载（4 + 4*N 字节）
      */
     fun buildBlockCrcsPayload(blockSize: Int, count: Int, blockCrcs: LongArray): ByteArray {
         val buffer = ByteBuffer.allocate(4 + 4 * count).order(ByteOrder.LITTLE_ENDIAN)
@@ -102,7 +102,7 @@ object BleProtocol {
     }
 
     /**
-     * Builds RETRY_BLOCK payload (2 bytes: blockIndex u16 LE)
+     * 构建 RETRY_BLOCK 负载（2 字节：blockIndex u16 小端）
      */
     fun buildRetryBlockPayload(blockIndex: Int): ByteArray {
         val buffer = ByteBuffer.allocate(2).order(ByteOrder.LITTLE_ENDIAN)
@@ -111,7 +111,7 @@ object BleProtocol {
     }
 
     /**
-     * Builds SYNC_TIME payload (8 bytes: unixUtcSeconds u64 LE)
+     * 构建 SYNC_TIME 负载（8 字节：unixUtcSeconds u64 小端）
      */
     fun buildSyncTimePayload(unixUtcSeconds: Long): ByteArray {
         val buffer = ByteBuffer.allocate(8).order(ByteOrder.LITTLE_ENDIAN)
@@ -120,14 +120,14 @@ object BleProtocol {
     }
 
     /**
-     * Builds CONFIRM_REFRESH payload (1 byte: token)
+     * 构建 CONFIRM_REFRESH 负载（1 字节：token）
      */
     fun buildConfirmRefreshPayload(token: Byte): ByteArray {
         return byteArrayOf(token)
     }
 
     /**
-     * Builds END_IMAGE payload (4 bytes CRC32 LE)
+     * 构建 END_IMAGE 负载（4 字节 CRC32 小端）
      */
     fun buildEndImagePayload(crc32: Long): ByteArray {
         val buffer = ByteBuffer.allocate(4).order(ByteOrder.LITTLE_ENDIAN)
@@ -136,7 +136,7 @@ object BleProtocol {
     }
 
     /**
-     * Builds SET_OPTIONS payload (1 byte)
+     * 构建 SET_OPTIONS 负载（1 字节）
      */
     fun buildSetOptionsPayload(disableHint: Boolean): ByteArray {
         val options = if (disableHint) OPT_DISABLE_HINT else 0x00.toByte()
@@ -144,7 +144,7 @@ object BleProtocol {
     }
 
     /**
-     * Parsed Control Message
+     * 解析后的控制消息
      */
     sealed class ControlFrame(val opcode: Byte, val seq: Byte, val status: ProtocolError) {
         class GetInfoResponse(
@@ -207,7 +207,7 @@ object BleProtocol {
         class PingResponse(seq: Byte, status: ProtocolError, val echoedData: ByteArray) : ControlFrame(OP_RESP_PING, seq, status)
         class SetOptionsResponse(seq: Byte, status: ProtocolError, val options: Byte) : ControlFrame(OP_RESP_SET_OPTIONS, seq, status)
 
-        // Events
+        // 事件
         class StateEvent(val state: DeviceState, val error: ProtocolError) :
             ControlFrame(EVT_STATE, 0, ProtocolError.OK)
 
@@ -227,7 +227,7 @@ object BleProtocol {
     }
 
     /**
-     * Parses incoming notify frame from CONTROL characteristic.
+     * 解析来自 CONTROL 特征值的入站 notify 帧。
      */
     fun parseControlFrame(data: ByteArray): ControlFrame? {
         if (data.size < 4) return null

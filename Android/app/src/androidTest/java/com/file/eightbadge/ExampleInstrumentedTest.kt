@@ -9,15 +9,15 @@ import org.junit.runner.RunWith
 import org.junit.Assert.*
 
 /**
- * Instrumented test, which will execute on an Android device.
+ * 插桩测试，将在 Android 设备上执行。
  *
- * See [testing documentation](http://d.android.com/tools/testing).
+ * 参见 [testing documentation](http://d.android.com/tools/testing)。
  */
 @RunWith(AndroidJUnit4::class)
 class ExampleInstrumentedTest {
     @Test
     fun useAppContext() {
-        // Context of the app under test.
+        // 被测应用的上下文。
         val appContext = InstrumentationRegistry.getInstrumentation().targetContext
         assertEquals("com.file.eightbadge", appContext.packageName)
     }
