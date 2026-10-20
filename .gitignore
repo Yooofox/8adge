@@ -23,6 +23,10 @@ captures/
 # dirs. Not part of the sources - flashing is documented in README.md.
 flash_download_tool/
 
+# ------------------------------------------------------------ scratch folders
+# Temporary comparison copies of upstream sources, never part of the build.
+github-dev/
+
 # ---------------------------------------------------------------- OS / editor
 .DS_Store
 Thumbs.db
