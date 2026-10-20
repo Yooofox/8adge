@@ -192,6 +192,25 @@ def main() -> int:
         # match that shape rather than a backticked value.
         expect(doc, f"| {v} | `{name.replace('BLE_STATE_', '')}`", f"{name} (state row)")
 
+    # --- v1.3.1 additions ------------------------------------------------
+    # The one-byte diagnosis an ERR_STATE END_IMAGE carries, plus the rules the
+    # app has to implement for it. The names come from ble_protocol.h, so a
+    # rename there cannot leave the prose behind.
+    expect(doc, "data_hint", "END_IMAGE ERR_STATE hint byte (docs 6.3)")
+    hints = [n for n in consts if n.startswith("BLE_HINT_DATA_")]
+    if "BLE_HINT_NONE" in consts:
+        hints.insert(0, "BLE_HINT_NONE")
+    if not hints:
+        FAILURES.append("BLE_HINT_* constants not found in ble_protocol.h")
+        print("MISS BLE_HINT_*                   hint constants in ble_protocol.h")
+    for name in hints:
+        short = name.replace("BLE_HINT_", "")
+        if short == "NONE":
+            continue
+        expect(doc, short, f"{name} documented by name")
+    expect(doc, "ERR_BUSY", "RETRY_BLOCK busy rule (docs 5.9)")
+    expect(doc, "一块一块来", "one-repair-at-a-time rule")
+
     # --- things that must NOT still say v1 -------------------------------
     #
     # Only wording that would mislead an implementer if read as *current*

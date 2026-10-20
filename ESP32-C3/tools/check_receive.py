@@ -364,9 +364,15 @@ class Device:
         self.block_bytes = 0
 
     def retry_block(self, index: int) -> int:
-        """Mirror of handleRetryBlock(); returns the byte count for the app."""
+        """Mirror of handleRetryBlock(); returns the byte count for the app.
+
+        0 = the block was already good, -1 = ERR_BUSY (a repair is still
+        outstanding: re-arming would silently drop what the app already sent).
+        """
         if index >= self.block_count:
             raise AssertionError("index out of range")
+        if self.fixing:
+            return -1
         if not self.is_bad(index):
             return 0
         self.fix_block = index
@@ -646,6 +652,26 @@ def main() -> int:
         check(status_d == 0x00,
               f"{label}: END_IMAGE after repair -> OK (a running CRC accumulated "
               f"during reception could not have known this)")
+
+        # --- 6b. one repair at a time ---------------------------------
+        # Arming a second block while the first is still short would drop the
+        # bytes already received for it, so the device refuses instead.
+        panel_k = Panel(rotation)
+        dev_k = Device(panel_k, fmt, block_shift, len(payload))
+        dev_k.begin_blocks([c for c, _ in bcrcs])
+        for ch in chunked(bytes(corrupt), chunk_max):
+            dev_k.data(ch, window)
+        dev_k.end(want)
+        check(dev_k.retry_block(bad_index) > 0,
+              f"{label}: the first repair is armed")
+        half = max(1, bcrcs[bad_index][1] // 2)
+        dev_k.data(payload[off:off + half], window)
+        check(dev_k.retry_block(1) == -1,
+              f"{label}: a second RETRY_BLOCK while one is outstanding -> ERR_BUSY")
+        for ch in chunked(payload[off + half:off + bcrcs[bad_index][1]], chunk_max):
+            dev_k.data(ch, window)
+        check(dev_k.bad_count == 0,
+              f"{label}: finishing the first repair still verifies the block")
 
         # --- 8. the short final block ---------------------------------
         last = blocks - 1

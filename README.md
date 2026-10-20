@@ -15,6 +15,7 @@
 ## 目录
 
 - [项目简介](#项目简介)
+- [参考项目与血缘（建议优先阅读）](#参考项目与血缘建议优先阅读)
 - [系统架构](#系统架构)
 - [目录结构](#目录结构)
 - [硬件](#硬件)
@@ -24,7 +25,7 @@
 - [关键技术点](#关键技术点)
 - [开发与自测](#开发与自测)
 - [相关文档](#相关文档)
-- [致谢与许可](#致谢与许可)
+- [许可证](#许可证)
 
 ---
 
@@ -48,6 +49,41 @@
   App 弹窗、用户确认后才放行（默认不确认就不刷）。
 - **竖屏工作**：手机按 **552 × 768** 画布作图，设备自己旋转 90° 送到 **768 × 552** 的横屏面板上。
 - **逐块校验**：4 KB 一块 CRC32，全部通过才刷屏；有坏块时只回传坏块位图，手机只重传那几块。
+
+---
+
+## 参考项目与血缘（建议优先阅读）
+
+8adge 不是凭空出现的：**外壳与硬件方案来自社区项目，屏驱来自另一份开源适配**。
+动手改本项目之前，建议先把下表的参考项目读一遍 —— 这块面板的坑、这套外壳的装法、
+以及整个 InkSight 生态的做法都在它们的文档里。
+
+| 参考项目 | 与本项目的关系 | 许可证 |
+|---|---|---|
+| ★ [krstc/InkSight_adapt_HUAWEI_eink](https://github.com/krstc/InkSight_adapt_HUAWEI_eink) | **屏驱来源**：[`ESP32-C3/src/epd_398_4color.{h,cpp}`](ESP32-C3/src/epd_398_4color.cpp) 的 JD79665 寄存器序列取自其 `firmware/src/epd_driver.cpp`，本项目在其基础上修正了刷屏问题（VRES = 600、交错栅极寻址、按行窗口） | **MIT**（© 2026 datascale-ai）✅ 兼容 |
+| [墨鱼 / InkSight（datascale-ai/inksight）](https://github.com/datascale-ai/inksight) · [官网](https://www.inksight.site/zh) | 同源生态的上游项目（WiFi 联网 + 后端 + 模式广场）。**8adge 没有使用它的任何源码**，也没有沿用它的联网架构（8adge 是纯 BLE） | **MIT**（© 2026 datascale-ai）✅ 兼容 |
+| ★ [华为 3.98 寸墨水屏（支持 A0/A1 固件）ESP32-C3 mini 外壳适配 InkSight 墨水屏项目](https://makerworld.com.cn/zh/models/2694038)（MakerWorld 模型 2694038） | **外壳与硬件方案来源**：3D 打印外壳 + 8 线飞线接法。**未使用其任何代码**，本仓库也不包含模型文件 | MakerWorld 模型授权，由模型作者在页面声明（通常限制商用）⚠️ 仅约束模型文件本身 |
+
+一句话血缘：
+
+```text
+MakerWorld 2694038 外壳 / 硬件方案
+        │（同源生态）
+墨鱼 InkSight（MIT，未使用其代码）
+        │
+krstc/InkSight_adapt_HUAWEI_eink —— 华为 A1 适配 + 屏驱（MIT）
+        │  取用：JD79665 寄存器序列 → 并修正刷屏问题
+        ▼
+8adge（MIT）：纯 BLE 固件 + Android 客户端
+```
+
+**代码归属**：除上表明确标注的屏驱寄存器序列外，BLE 协议（v3）、固件协议引擎、180 秒刷新冷却、
+提示屏、以及整个 Android 客户端（图像处理 / 14 种抖动 / 传输管道 / UI）**均为本项目自行编写**，
+未复制上述 InkSight 系列项目的任何代码。
+
+**许可证结论**：两个源码参考项目都是 **MIT**，与 8adge 的 MIT 发布方式完全兼容
+（上游版权声明已按 MIT 要求保留，见 [`LICENSE`](LICENSE) 与 [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md)）；
+MakerWorld 模型不是代码，其授权只约束外壳模型文件的复用与再分发。
 
 ---
 
@@ -86,6 +122,8 @@ flowchart LR
 
 ```text
 8adge/
+├── LICENSE                  MIT License（含上游 MIT 声明）
+├── THIRD_PARTY_NOTICES.md   第三方组件 / 参考项目许可清单
 ├── Android/                 Android 客户端（Kotlin，独立 Gradle 工程）
 │   ├── README.md            ★ 客户端详细文档（功能、协议、构建）
 │   ├── app/src/main/java/com/file/eightbadge/
@@ -308,11 +346,17 @@ cd Android
 
 ---
 
-## 致谢与许可
+## 许可证
 
+本项目采用 **MIT License** 发布，全文见 [`LICENSE`](LICENSE)。
+
+- **屏驱**的 JD79665 寄存器序列来自 [krstc/InkSight_adapt_HUAWEI_eink](https://github.com/krstc/InkSight_adapt_HUAWEI_eink)
+  （**MIT**，© 2026 datascale-ai），上游版权与许可声明已按 MIT 要求保留。
+- 上游 **墨鱼 / InkSight** 系列项目同样是 **MIT**，与本项目的发布方式兼容；
+  本项目未使用其源码（详见上方「参考项目与血缘」与 [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md)）。
+- **MakerWorld 模型 2694038** 的外壳/硬件图纸不是代码，授权由模型作者在模型页面声明；
+  本仓库不包含该模型文件，复用外壳请自行遵守页面条款。
 - 提示屏字库基于 **HarmonyOS Sans SC Bold**，源字体与许可证（HarmonyOS Sans Fonts License）
   随工程放在 [`ESP32-C3/assets/fonts/`](ESP32-C3/assets/fonts/)。
-- 固件依赖 [PlatformIO](https://platformio.org/) 的 `espressif32` 平台与
-  [NimBLE-Arduino](https://github.com/h2zero/NimBLE-Arduino)（1.4.3）；
-  App 依赖 AndroidX / Material Components。
-- 本仓库暂未附开源许可证；如需转载或二次分发，请先联系作者。
+- 运行时依赖（PlatformIO 的 `espressif32` 平台、NimBLE-Arduino、AndroidX 等）**不随本仓库分发**，
+  版本与许可证清单见 [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md)。

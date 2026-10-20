@@ -200,7 +200,29 @@ python tools\check_docs.py                        # 改协议常量或协议文�
   `static_assert` 在编译期把关。
 - **驱动公开入口都要 `ensureGpio()`**（`epd398Init/Upload2bpp/PowerOff/Sleep/WaitBusyTimed`）：
   头文件承诺“可以单独调用”，而漏掉一处就会往未配置的引脚写电平，表现为面板毫无反应。
+- **引脚映射与 `EPD398_VRES` 由编译器把关**（`config.h` 的 `pinsUnique`/`pinIn` 断言 +
+  `epd_398_4color.h` 的 VRES 上下界）：重复引脚、让面板占用 strapping 脚（GPIO8/9）或
+  USB 脚（GPIO18/19）、把 VRES 改回 552（会造成"下半屏缺失 + 24 行残影"），都会**编译失败**
+  并给出中文/英文说明，而不是等到烧录后看现象。
+- **`RETRY_BLOCK` 一次只允许一块**：`s_fixing` 为真（上一块还差字节）时再请求别的块要回
+  `ERR_BUSY`，不要退回“静默换块”——那会丢掉 App 已经发出去的那半块，而 App 只会看到位图
+  没变，于是重复发同一段。文档 §5.9 与自测清单第 37 条是这条规则的对照点。
 - **改完必须真编译一次（`pio run`）**：协议路径里有几类错误只有编译器会抓，脚本与人工复核都看不见——
   本轮 1.3.1 的修复就是靠一次真实编译才发现 `recomputeWholeCrc()` 被误删，以及
   NimBLE 1.4.3 的 `updateConnParams()` / `setDataLen()` 返回的是 `void`（不能接 `int`）。
   注意：`pio run` 会顺带跑 `merge_firmware.py`，重新生成 `bin/8adge_BLE_398_A1.bin` 与 `bin/SHA256.txt`。
+
+## 7. 来源与许可
+
+- **屏驱有上游**：`src/epd_398_4color.{h,cpp}` 的 JD79665 寄存器序列取自
+  [krstc/InkSight_adapt_HUAWEI_eink](https://github.com/krstc/InkSight_adapt_HUAWEI_eink)
+  的 `firmware/src/epd_driver.cpp`（**MIT**，© 2026 datascale-ai）。本项目在其基础上修正了
+  刷屏问题（VRES = 600、交错栅极寻址、按行窗口），每条改动的理由都写在
+  `epd_398_4color.h` 的文件头里；上游版权与许可声明按 MIT 要求保留。
+- **其余固件代码自行编写**：BLE 协议 v3、协议引擎、180 秒刷新冷却、提示屏，均未复制
+  上游「墨鱼 / InkSight」项目的任何源码（该项目同为 MIT，本固件只是参考对象）。
+- **外壳与硬件方案**来自 MakerWorld 模型 2694038（「华为 3.98 寸墨水屏（支持 A0/A1 固件）
+  ESP32-C3 mini 外壳适配 InkSight 墨水屏项目」），仅采用其外壳与接线方案，未使用其代码。
+- 本项目采用 **MIT License**，详见仓库根目录
+  [`LICENSE`](../LICENSE)、[`THIRD_PARTY_NOTICES.md`](../THIRD_PARTY_NOTICES.md)、
+  以及 [根 README 的「参考项目与血缘」](../README.md#参考项目与血缘建议优先阅读)。

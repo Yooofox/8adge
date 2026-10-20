@@ -42,7 +42,7 @@
 //  ---------------------------------------------------------------- sequence
 //
 //  The register sequence is the JD79665 one from the open-source Huawei A1
-//  adaptation (github.com/krstc/8adge_adapt_HUAWEI_eink, MIT). It is what
+//  adaptation (github.com/krstc/InkSight_adapt_HUAWEI_eink, MIT). It is what
 //  removes that band: the vendor firmware's own sequence sets 0x00 <- 0x0B,
 //  "LUT from OTP", which leaves the panel on an internal waveform that reacts to
 //  the half-loaded gate pairs.
@@ -101,6 +101,19 @@
 // note above. A 552-line space cannot reach the gate addresses of image rows
 // 276..299, which is a visible defect rather than a rounding difference.
 #define EPD398_VRES         600
+
+// Both bounds are compile-time, because the failure they prevent is silent:
+// with VRES = 552 the controller simply never drives the gates carrying image
+// rows 276..299 (half the picture shifted down and a 24-row band left showing
+// the previous frame), and a VRES larger than the controller's own 600-line
+// space would just spend scan time addressing gates that do not exist.
+//      image rows   0..299 -> gates 0, 2, 4, ..., 598   (highest: 598)
+//      image rows 300..551 -> gates 1, 3, 5, ..., 503
+static_assert(EPD398_VRES >= 599,
+              "EPD398_VRES must reach gate 598 (image row 299); 552 leaves "
+              "image rows 276..299 undriven");
+static_assert(EPD398_VRES <= 600,
+              "EPD398_VRES exceeds the controller's 600-line gate space");
 
 // ---------------------------------------------------------------- pins
 // Vendor wiring (screen side -> ESP32-C3 side):

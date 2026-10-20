@@ -770,17 +770,19 @@ static void handleRetryBlock(uint8_t seq, const uint8_t *p, size_t len) {
         return;
     }
 
-    // Re-arming while a repair is still outstanding (docs: one block at a time)
-    // silently drops the bytes already received for the previous block; that
-    // block stays marked bad, so the app can still recover, but it also loses
-    // what it already sent. Logged before the state is overwritten, so the
-    // numbers mean something.
-    if (s_fixing && throttleLogDue()) {
-        BLE_LOG("[BLE] RETRY_BLOCK %u supersedes block %u with %lu of %lu bytes outstanding\n",
+    // Re-arming while the previous repair is still outstanding (docs §5.9: one
+        // block at a time) would silently drop the bytes already received for it.
+        // The block stays marked bad and nothing is corrupted, but the app loses
+        // what it sent - so refuse it instead, which is one round trip and cannot
+        // be mistaken for progress.
+        if (s_fixing) {
+            BLE_LOG("[BLE] RETRY_BLOCK %u refused: block %u still has %lu of %lu bytes outstanding\n",
                 (unsigned)index, (unsigned)s_fixBlock,
                 (unsigned long)s_fixNeeded, (unsigned long)s_fixLen);
-    }
-    s_fixBlock = index;
+            sendResponse(BLE_OP_RETRY_BLOCK, seq, BLE_ERR_BUSY, nullptr, 0);
+            return;
+        }
+        s_fixBlock = index;
     s_fixOffset = (uint32_t)index * s_blockSize;
     uint32_t remain = s_total - s_fixOffset;
     s_fixLen = (remain < s_blockSize) ? remain : s_blockSize;

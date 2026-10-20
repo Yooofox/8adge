@@ -41,6 +41,29 @@
 #define PIN_LED            8
 #define PIN_LED_ACTIVE_LOW 1
 
+// ---------------------------------------------------------------- pin sanity
+// Compile time, because a mistyped number here is otherwise invisible until the
+// panel stays blank or the LED never lights. GPIO8 (LED) and GPIO9 (BOOT) are
+// the board's strapping pins and are not used by the panel; GPIO18/19 are the
+// C3's USB D-/D+, which this build needs for its CDC console.
+constexpr bool pinIn(const int *p, int n, int pin) {
+    return n <= 0 ? false : (p[0] == pin || pinIn(p + 1, n - 1, pin));
+}
+
+constexpr bool pinsUnique(const int *p, int n) {
+    return n <= 1 ? true : (!pinIn(p + 1, n - 1, p[0]) && pinsUnique(p + 1, n - 1));
+}
+
+constexpr int kUsedPins[] = {
+    PIN_EPD_MOSI, PIN_EPD_SCK, PIN_EPD_CS, PIN_EPD_DC, PIN_EPD_RST, PIN_EPD_BUSY,
+    PIN_CFG_BTN, PIN_LED,
+};
+static_assert(pinsUnique(kUsedPins, 8), "two of the board's functions share a pin");
+static_assert(!pinIn(kUsedPins, 6, 8) && !pinIn(kUsedPins, 6, 9),
+              "the panel must not claim a strapping pin (GPIO8 LED / GPIO9 BOOT)");
+static_assert(!pinIn(kUsedPins, 8, 18) && !pinIn(kUsedPins, 8, 19),
+              "GPIO18/19 are USB D-/D+ and must stay free for the console");
+
 // ---------------------------------------------------------------- geometry
 // The panel itself is a 768x552 landscape part, 2bpp.
 //
@@ -147,6 +170,22 @@
 // BLE maximum (a 4.2 feature). Without it the controller may stay at the 27-byte
 // default, and every 512-byte ATT write costs ~20 LL packets.
 #define BLE_LL_TX_OCTETS 251
+
+// The numbers above have relationships the specification (and NimBLE) enforce at
+// run time, which used to live only in prose. They are cheap to check here, and
+// getting one wrong shows up as a link that drops during a transfer or a write
+// the host silently refuses.
+//   * supervision timeout (10 ms units) must exceed
+//     (1 + latency) * maxInterval * 1.25 ms * 2  -> multiply by 20 to stay
+//     integral: timeout*20 > (1+latency)*maxInterval*5
+//   * the DATA chunk ceiling is NimBLE's characteristic value buffer
+//     (BLE_ATT_ATTR_MAX_LEN = 512): a longer write comes back as an ATT error
+static_assert((int)BLE_CONN_TIMEOUT * 20 > (1 + (int)BLE_CONN_LATENCY) * (int)BLE_CONN_MAX_INTERVAL * 5,
+              "BLE_CONN_TIMEOUT is too short for the requested interval/latency");
+static_assert(BLE_DATA_CHUNK_MAX <= 512,
+              "BLE_DATA_CHUNK_MAX exceeds NimBLE's 512-byte characteristic value buffer");
+static_assert(BLE_CONN_MIN_INTERVAL <= BLE_CONN_MAX_INTERVAL,
+              "the connection interval range is inverted");
 
 // How many DATA chunks the device reports progress after. This is a *progress
 // report*, NOT a stop-and-wait barrier: the app may keep sending while an ACK is

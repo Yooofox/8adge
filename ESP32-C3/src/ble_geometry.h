@@ -49,6 +49,19 @@ static_assert(EPD398_COLOR_BYTES == (BLE_IMAGE_WIDTH * BLE_IMAGE_HEIGHT) / 4,
 static_assert(EPD398_WIDTH == BLE_IMAGE_HEIGHT && EPD398_HEIGHT == BLE_IMAGE_WIDTH,
               "with a +/-90 rotation the panel must be the canvas turned on its side");
 
+// The protocol's block geometry has two ceilings that are easy to break by
+// changing a single constant, and both failures are silent on the wire:
+//   * the smallest accepted block size must not need more blocks than the
+//     END_IMAGE failure bitmap (BLE_MAX_BLOCKS) can hold;
+//   * the BLOCK_CRCS frame carries 4 bytes per block, so even the smallest block
+//     size must still fit the frame format's one-byte length.
+// Rules out, for example, raising the canvas or lowering BLE_BLOCK_SHIFT_MIN
+// without touching BLE_MAX_BLOCKS.
+static_assert((EPD398_COLOR_BYTES + (1 << BLE_BLOCK_SHIFT_MIN) - 1) / (1 << BLE_BLOCK_SHIFT_MIN) <= BLE_MAX_BLOCKS,
+              "the smallest block size would need more blocks than BLE_MAX_BLOCKS holds");
+static_assert(BLE_FRAME_HEADER_LEN + 4 + 4 * ((EPD398_COLOR_BYTES + (1 << BLE_BLOCK_SHIFT_MIN) - 1) / (1 << BLE_BLOCK_SHIFT_MIN)) <= BLE_FRAME_MAX_LEN,
+              "a BLOCK_CRCS frame for the smallest block size would not fit the frame format");
+
 // Map a canvas coordinate onto the panel's own framebuffer coordinate system.
 //
 // The angle is measured clockwise: BLE_ROTATION = 90 means the canvas' top-left

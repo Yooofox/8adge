@@ -8,7 +8,7 @@
 //  comes out cut in half at the middle. See the header for the full reasoning.
 //
 //  The register sequence is the open-source JD79665 one from
-//  github.com/krstc/8adge_adapt_HUAWEI_eink (MIT), which is what removes the
+//  github.com/krstc/InkSight_adapt_HUAWEI_eink (MIT), which is what removes the
 //  darker band the vendor firmware's "LUT from OTP" sequence produced across
 //  image rows 252..299. Its reset and its 0x12 <- 0x00 are kept; its VRES = 552
 //  is NOT (that is the value that leaves 24 rows undriven).
@@ -186,8 +186,8 @@ static void epd398SendResolution() {
 
 void epd398Init() {
     ensureGpio();
-    // ---- JD79665 register sequence (krstc/8adge_adapt_HUAWEI_eink) ----
-    // Copied from the reference driver's EPD_PANEL_38_JD79665_BWRY branch, with
+    // ---- JD79665 register sequence (krstc/InkSight_adapt_HUAWEI_eink, MIT) ----
+        // Taken from the reference driver's firmware/src/epd_driver.cpp, with
     // one change: 0x61 gets VRES = 600 instead of the reference's 552, because
     // the reference's own value leaves image rows 276..299 undriven on this
     // panel. Everything else is reproduced as the reference has it - including
