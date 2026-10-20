@@ -9,6 +9,7 @@
 | 组件 | 来源 | 许可证 | 本项目中的位置 |
 |---|---|---|---|
 | JD79665 寄存器序列 | [krstc/InkSight_adapt_HUAWEI_eink](https://github.com/krstc/InkSight_adapt_HUAWEI_eink)（`firmware/src/epd_driver.cpp`） | **MIT**，Copyright (c) 2026 datascale-ai | [`ESP32-C3/src/epd_398_4color.h`](ESP32-C3/src/epd_398_4color.h)、[`epd_398_4color.cpp`](ESP32-C3/src/epd_398_4color.cpp) |
+| 上游 `firmware/src/` 的**逐字副本**（`config.h`、`display.{h,cpp}`、`epd_driver.{h,cpp}`） | 同上 | **MIT**，Copyright (c) 2026 datascale-ai | [`ESP32-C3/github-dev/`](ESP32-C3/github-dev/README.md)（对照用，**不参与编译**） |
 
 上游 MIT 许可证要求保留版权与许可声明，因此：
 

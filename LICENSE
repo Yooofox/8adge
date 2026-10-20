@@ -33,4 +33,8 @@ project, whose notice is retained as required:
   ESP32-C3/src/epd_398_4color.{h,cpp}, taken from that project's
   firmware/src/epd_driver.cpp (see THIRD_PARTY_NOTICES.md for details).
 
+    Also included verbatim, for reference only and not part of any build:
+    ESP32-C3/github-dev/{config.h,display.h,display.cpp,epd_driver.h,epd_driver.cpp}
+    are copies of that project's firmware/src/ files.
+
 See THIRD_PARTY_NOTICES.md for the full list of third-party components.

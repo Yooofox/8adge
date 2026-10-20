@@ -86,7 +86,7 @@ esptool.py --chip esp32c3 --port COMx write_flash 0x0 bin\8adge_BLE_398_A1.bin
 本项目 core 3.20017 = Arduino-ESP32 2.0.17）；NimBLE 比内置 Bluedroid 省约 400 KB flash；
 分区表 `min_spiffs.csv`；v1.3.1 实测 **RAM 7.5%（24572 B）/ Flash 29.6%（581342 B）**
 （`pio run` release，framework-arduinoespressif32 3.20017 + NimBLE-Arduino 1.4.3，无警告）；
-合并镜像 `bin/8adge_BLE_398_A1.bin` 为 674368 字节。
+合并镜像 `bin/8adge_BLE_398_A1.bin` 为 674352 字节。
 
 ## 4. 目录结构
 
@@ -221,6 +221,9 @@ python tools\check_docs.py                        # 改协议常量或协议文�
   `epd_398_4color.h` 的文件头里；上游版权与许可声明按 MIT 要求保留。
 - **其余固件代码自行编写**：BLE 协议 v3、协议引擎、180 秒刷新冷却、提示屏，均未复制
   上游「墨鱼 / InkSight」项目的任何源码（该项目同为 MIT，本固件只是参考对象）。
+- **上游参考副本**：[`github-dev/`](github-dev/README.md) 是 krstc 那份华为 A1 适配
+  `firmware/src/` 的逐字副本（**MIT**，© 2026 datascale-ai），只用于对照，**不参与编译**
+  （PlatformIO 只编译 `src/`）。
 - **外壳与硬件方案**来自 MakerWorld 模型 2694038（「华为 3.98 寸墨水屏（支持 A0/A1 固件）
   ESP32-C3 mini 外壳适配 InkSight 墨水屏项目」），仅采用其外壳与接线方案，未使用其代码。
 - 本项目采用 **MIT License**，详见仓库根目录

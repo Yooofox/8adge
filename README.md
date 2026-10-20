@@ -81,6 +81,10 @@ krstc/InkSight_adapt_HUAWEI_eink —— 华为 A1 适配 + 屏驱（MIT）
 提示屏、以及整个 Android 客户端（图像处理 / 14 种抖动 / 传输管道 / UI）**均为本项目自行编写**，
 未复制上述 InkSight 系列项目的任何代码。
 
+唯一需要注意的一处是 [`ESP32-C3/github-dev/`](ESP32-C3/github-dev/README.md)：它保存了
+krstc 那份华为 A1 适配的 `firmware/src/` **逐字副本**（MIT，版权归上游），只用于与本工程的
+`src/` 对照、复核寄存器序列，**不参与编译**（PlatformIO 只编译 `src/`）。
+
 **许可证结论**：两个源码参考项目都是 **MIT**，与 8adge 的 MIT 发布方式完全兼容
 （上游版权声明已按 MIT 要求保留，见 [`LICENSE`](LICENSE) 与 [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md)）；
 MakerWorld 模型不是代码，其授权只约束外壳模型文件的复用与再分发。
@@ -144,7 +148,8 @@ flowchart LR
     ├── assets/fonts/        提示屏字库源字体（HarmonyOS Sans SC Bold + 许可证）
     ├── bin/                 发布镜像 8adge_BLE_398_A1.bin + SHA256.txt
     ├── src/                 main.cpp / ble_* / refresh_guard / epd_398_4color / led
-    └── tools/               字库生成、提示屏预览、接收路径与冷却状态机自测脚本
+        ├── github-dev/          上游 InkSight A1 适配 firmware/src 的逐字副本（MIT，对照用，不参与编译）
+        └── tools/               字库生成、提示屏预览、接收路径与冷却状态机自测脚本
 ```
 
 > 仓库只包含上述两个工程的**源码与文档**。用于烧录的第三方 Windows 工具（Espressif
@@ -196,7 +201,7 @@ pio device monitor       # 串口日志，115200
 `ESP32-C3/bin/8adge_BLE_398_A1.bin`。
 
 > 依赖锁定：`h2zero/NimBLE-Arduino@1.4.3`（**必须 1.4.x**，2.x 需要 Arduino-ESP32 3.x / IDF 5）。
-> 实测占用：RAM 7.5%（24572 B）/ Flash 29.6%（581342 B），合并镜像 674368 字节。
+> 实测占用：RAM 7.5%（24572 B）/ Flash 29.6%（581342 B），合并镜像 674352 字节。
 
 ### 2. 编译安装 App
 
